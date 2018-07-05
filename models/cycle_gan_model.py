@@ -30,6 +30,9 @@ class CycleGANModel(BaseModel):
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
+        self.input_nc = opt.input_nc
+        self.output_nc = opt.output_nc
+        self.dataroot = opt.dataroot
         if self.isTrain and self.opt.lambda_identity > 0.0:
             visual_names_A.append('idt_A')
             visual_names_B.append('idt_B')
@@ -80,7 +83,21 @@ class CycleGANModel(BaseModel):
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
+
+
     def forward(self):
+        if self.dataroot == './datasets/semanticlabels':
+            size = self.real_A.size()
+            oneHot_size = (size[0], self.input_nc, size[2], size[3])
+            input_label_A = torch.cuda.FloatTensor(torch.Size(oneHot_size)).zero_().to(self.device)
+            self.real_A = input_label_A.scatter_(1, self.real_A.data.long().cuda(), 1.0)
+            size = self.real_B.size()
+            oneHot_size = (size[0], self.output_nc, size[2], size[3])
+            input_label_B = torch.cuda.FloatTensor(torch.Size(oneHot_size)).zero_()
+            self.real_B = input_label_B.scatter_(1, self.real_B.data.long().cuda(), 1.0).to(self.device)
+
+
+
         self.fake_B = self.netG_A(self.real_A)
         self.rec_A = self.netG_B(self.fake_B)
 

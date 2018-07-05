@@ -3,7 +3,7 @@ from data.base_dataset import BaseDataset, get_transform
 from data.image_folder import make_dataset
 from PIL import Image
 import random
-
+import numpy as np
 
 class UnalignedDataset(BaseDataset):
     @staticmethod
@@ -33,6 +33,30 @@ class UnalignedDataset(BaseDataset):
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
         # print('(A, B) = (%d, %d)' % (index_A, index_B))
+        if self.root == './datasets/semanticlabels':
+            # A is cityscapes, B is GTA5
+            label2train = [[0, 255], [1, 255], [2, 255], [3, 255], [4, 255], [5, 255], [6, 255], [7, 0], [8, 1],
+                           [9, 255], [10, 255], [11, 2], [12, 3],
+                           [13, 4], [14, 255], [15, 255], [16, 255], [17, 5], [18, 255], [19, 6], [20, 7], [21, 8],
+                           [22, 9], [23, 10], [24, 11], [25, 12],
+                           [26, 13], [27, 14], [28, 15], [29, 255], [30, 255], [31, 16], [32, 17], [33, 18], [-1, 255]]
+
+            A_label = Image.open(A_path)
+            B_label = Image.open(B_path)
+            A_label = self.transform(A_label)
+            B_label = self.transform(B_label)
+            A_label = np.asarray(A_label, np.float32)
+            B_label = np.asarray(B_label, np.float32)
+            A_label_copy = 255 * np.ones(A_label.shape, dtype=np.float32)
+            for ind in range(len(label2train)):
+                A_label_copy[A_label == label2train[ind][0]] = label2train[ind][1]
+            A_label_copy[A_label_copy == 255] = 19
+            A_label_copy = A_label_copy[np.newaxis, :]
+            B_label_copy = B_label[np.newaxis, :]
+            return {'A': A_label_copy, 'B': B_label_copy,
+                    'A_paths': A_path, 'B_paths': B_path}
+
+
         A_img = Image.open(A_path).convert('RGB')
         B_img = Image.open(B_path).convert('RGB')
 
