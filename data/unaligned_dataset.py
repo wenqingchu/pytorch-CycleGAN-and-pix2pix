@@ -13,11 +13,29 @@ class UnalignedDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
         self.root = opt.dataroot
-        self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')
-        self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')
+        if self.root == './datasets/semanticlabels':
+            A_paths = []
+            A_dir = os.path.join(self.root, 'cityscapes/gtFine')
+            A_list_path = 'semanticlabels_list/' + opt.phase + 'A.txt'
+            A_img_ids = [i_id.strip() for i_id in open(A_list_path)]
+            for name in A_img_ids:
+                A_img_file = os.path.join(A_dir, "%s/%s" % (opt.phase, name[:-15] + "gtFine_labelsIds.png"))
+                A_paths.append(A_img_file)
+            self.A_paths = A_paths
+            B_paths = []
+            B_dir = os.path.join(self.root, 'GTA5/labels')
+            B_list_path = 'semanticlabels_list/' + opt.phase + 'B.txt'
+            B_img_ids = [i_id.strip() for i_id in open(B_list_path)]
+            for name in B_img_ids:
+                B_img_file = os.path.join(B_dir, "%s" % (name))
+                B_paths.append(B_img_file)
+            self.B_paths = B_paths
+        else:
+            self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')
+            self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')
 
-        self.A_paths = make_dataset(self.dir_A)
-        self.B_paths = make_dataset(self.dir_B)
+            self.A_paths = make_dataset(self.dir_A)
+            self.B_paths = make_dataset(self.dir_B)
 
         self.A_paths = sorted(self.A_paths)
         self.B_paths = sorted(self.B_paths)
