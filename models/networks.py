@@ -2,7 +2,12 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 import functools
+import itertools
 from torch.optim import lr_scheduler
+from tps_grid_gen import TPSGridGen
+import numpy as np
+import torch.nn.functional as F
+from grid_sample import grid_sample
 
 ###############################################################################
 # Helper Functions
@@ -68,7 +73,6 @@ def init_net(net, init_type='normal', gpu_ids=[]):
     init_weights(net, init_type)
     return net
 
-
 def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
@@ -81,6 +85,10 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif which_model_netG == 'unbounded_stn':
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+    elif which_model_netG == 'bounded_stn':
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     return init_net(netG, init_type, gpu_ids)
@@ -107,6 +115,105 @@ def define_D(input_nc, ndf, which_model_netD,
 # Classes
 ##############################################################################
 
+class StnGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, which_model_netG, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect'):
+        assert(n_blocks >= 0)
+        super(ResnetGenerator, self).__init__()
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        self.use_dropout = use_dropout
+        self.which_model_netG = which_model_netG
+        span_range = 0.9
+        span_range_height = span_range
+        span_range_width = span_range
+        r1 = span_range_height
+        r2 = span_range_width
+        grid_height = 4
+        grid_width = 4
+        image_height = 512
+        image_width = 1024
+        self.image_height = image_height
+        self.image_width = image_width
+
+        assert r1 < 1 and r2 < 1  # if >= 1, arctanh will cause error in BoundedGridLocNet
+        target_control_points = torch.Tensor(list(itertools.product(
+            np.arange(-r1, r1 + 0.00001, 2.0  * r1 / (grid_height - 1)),
+            np.arange(-r2, r2 + 0.00001, 2.0  * r2 / (grid_width - 1)),
+        )))
+        Y, X = target_control_points.split(1, dim=1)
+        target_control_points = torch.cat([X, Y], dim=1)
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                           bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        #n_downsampling = 2
+        n_downsampling = 3
+        for i in range(n_downsampling):
+            mult = 2**i
+            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * mult * 2),
+                      nn.ReLU(True)]
+
+        mult = 2**n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        '''
+        for i in range(n_downsampling):
+            mult = 2**(n_downsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=use_bias),
+                      norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        model += [nn.Tanh()]
+        '''
+
+        self.model = nn.Sequential(*model)
+        self.fc1 = nn.Linear((image_width/mult) * (image_height/mult) * ngf * mult, 500)
+        self.fc2 = nn.Linear(500, 2*grid_width*grid_width)
+
+        if which_model_netG == 'unbounded_stn':
+            bias = target_control_points.view(-1)
+        elif which_model_netG == 'bounded_stn':
+            bias = torch.from_numpy(np.arctanh(target_control_points.numpy()))
+            bias = bias.view(-1)
+        self.fc2.bias.data.copy_(bias)
+        self.fc2.weight.data.zero_()
+
+        self.tps = TPSGridGen(image_height, image_width, target_control_points)
+
+    def forward(self, input):
+        batch_size = input.size(0)
+        x = self.model(input)
+        x = x.view(-1)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
+        x = self.fc2(x)
+        if self.which_model_netG == 'bounded_stn':
+            points = F.tanh(x)
+        else:
+            points = x
+        source_control_points = points.view(batch_size, -1, 2)
+        source_coordinate = self.tps(source_control_points)
+        grid = source_coordinate.view(batch_size, self.image_height, self.image_width, 2)
+        transformed_x = grid_sample(x, grid)
+
+        return transformed_x
+
 
 # Defines the GAN loss which uses either LSGAN or the regular GAN.
 # When LSGAN is used, it is basically same as MSELoss,
@@ -132,6 +239,17 @@ class GANLoss(nn.Module):
     def __call__(self, input, target_is_real):
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Defines the generator that consists of Resnet blocks between a few
