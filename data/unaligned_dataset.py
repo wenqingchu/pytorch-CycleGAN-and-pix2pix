@@ -19,7 +19,7 @@ class UnalignedDataset(BaseDataset):
             A_list_path = 'semanticlabels_list/' + opt.phase + 'A.txt'
             A_img_ids = [i_id.strip() for i_id in open(A_list_path)]
             for name in A_img_ids:
-                A_img_file = os.path.join(A_dir, "%s/%s" % (opt.phase, name[:-15] + "gtFine_labelsIds.png"))
+                A_img_file = os.path.join(A_dir, "%s/%s" % (opt.phase, name[:-15] + "gtFine_labelIds.png"))
                 A_paths.append(A_img_file)
             self.A_paths = A_paths
             B_paths = []
@@ -69,8 +69,10 @@ class UnalignedDataset(BaseDataset):
             for ind in range(len(label2train)):
                 A_label_copy[A_label == label2train[ind][0]] = label2train[ind][1]
             A_label_copy[A_label_copy == 255] = 19
-            A_label_copy = A_label_copy[np.newaxis, :]
-            B_label_copy = B_label[np.newaxis, :]
+            #A_label_copy = A_label_copy[np.newaxis, :]
+            #B_label_copy = B_label[np.newaxis, :]
+            A_label_copy = A_label_copy
+            B_label_copy = B_label
             return {'A': A_label_copy, 'B': B_label_copy,
                     'A_paths': A_path, 'B_paths': B_path}
 

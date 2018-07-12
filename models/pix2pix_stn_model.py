@@ -20,10 +20,10 @@ class Pix2PixStnModel(BaseModel):
         parser.set_defaults(dataset_mode='unaligned')
         #parser.set_defaults(which_model_netG='unet_256')
         opt, _ = parser.parse_known_args()
-        if opt.stn == 'unbounded_stn':
-            parser.set_defaults(which_model_netG='unbounded_stn')
-        elif opt.stn == 'bounded_stn':
-            parser.set_defaults(which_model_netG='bounded_stn')
+        #if opt.stn == 'unbounded_stn':
+        #    parser.set_defaults(which_model_netG='unbounded_stn')
+        #elif opt.stn == 'bounded_stn':
+        #    parser.set_defaults(which_model_netG='bounded_stn')
 
         if is_train:
             parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
@@ -32,6 +32,8 @@ class Pix2PixStnModel(BaseModel):
 
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
+        self.input_nc = opt.input_nc
+        self.output_nc = opt.output_nc
         self.isTrain = opt.isTrain
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
         #self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
@@ -45,7 +47,7 @@ class Pix2PixStnModel(BaseModel):
             self.model_names = ['G']
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
-                                      opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+                                      opt.which_model_netG, opt.fineSize, opt.fineSize, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
@@ -74,8 +76,25 @@ class Pix2PixStnModel(BaseModel):
 
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
-        self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        real_A = input['A' if AtoB else 'B']
+        real_B = input['B' if AtoB else 'A']
+        size = real_A.size()
+        oneHot_size = (size[0], self.input_nc, size[2], size[3])
+        input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
+        input_label = input_label.scatter_(1, real_A.long(), 1.0)
+        #print(input_label.size())
+        self.real_A = input_label.to(self.device)
+
+        size = real_B.size()
+        oneHot_size = (size[0], self.output_nc, size[2], size[3])
+        input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
+        input_label = input_label.scatter_(1, real_B.long(), 1.0)
+        #print(input_label.size())
+        self.real_B = input_label.to(self.device)
+
+
+        #self.real_A = input['A' if AtoB else 'B'].to(self.device)
+        #self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):

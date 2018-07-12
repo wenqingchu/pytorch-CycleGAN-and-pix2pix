@@ -73,7 +73,7 @@ def init_net(net, init_type='normal', gpu_ids=[]):
     init_weights(net, init_type)
     return net
 
-def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, which_model_netG, image_width, image_height, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
@@ -86,9 +86,9 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif which_model_netG == 'unbounded_stn':
-        netG = StnGenerator(input_nc, output_nc, which_model_netG, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
     elif which_model_netG == 'bounded_stn':
-        netG = StnGenerator(input_nc, output_nc, which_model_netG, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     return init_net(netG, init_type, gpu_ids)
@@ -116,9 +116,9 @@ def define_D(input_nc, ndf, which_model_netD,
 ##############################################################################
 
 class StnGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, which_model_netG, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, which_model_netG, image_width, image_height, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect'):
         assert(n_blocks >= 0)
-        super(ResnetGenerator, self).__init__()
+        super(StnGenerator, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
@@ -131,8 +131,8 @@ class StnGenerator(nn.Module):
         r2 = span_range_width
         grid_height = 4
         grid_width = 4
-        image_height = 512
-        image_width = 1024
+        #image_height = 512
+        #image_width = 1024
         self.image_height = image_height
         self.image_width = image_width
 
@@ -210,7 +210,7 @@ class StnGenerator(nn.Module):
         source_control_points = points.view(batch_size, -1, 2)
         source_coordinate = self.tps(source_control_points)
         grid = source_coordinate.view(batch_size, self.image_height, self.image_width, 2)
-        transformed_x = grid_sample(x, grid)
+        transformed_x = grid_sample(input, grid)
 
         return transformed_x
 
