@@ -89,6 +89,8 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, image_width, image_heig
         netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
     elif which_model_netG == 'bounded_stn':
         netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+    elif which_model_netG == 'affine_stn':
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     return init_net(netG, init_type, gpu_ids)
@@ -184,13 +186,19 @@ class StnGenerator(nn.Module):
 
         self.model = nn.Sequential(*model)
         self.fc1 = nn.Linear((image_width/mult) * (image_height/mult) * ngf * mult, 500)
-        self.fc2 = nn.Linear(500, 2*grid_width*grid_width)
+        if which_model_netG == 'affine_stn':
+            self.fc2 = nn.Linear(500, 6)
+        else:
+            self.fc2 = nn.Linear(500, 2*grid_width*grid_width)
 
         if which_model_netG == 'unbounded_stn':
             bias = target_control_points.view(-1)
         elif which_model_netG == 'bounded_stn':
             bias = torch.from_numpy(np.arctanh(target_control_points.numpy()))
             bias = bias.view(-1)
+        elif which_model_netG == 'affine_stn':
+            bias = torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float)
+
         self.fc2.bias.data.copy_(bias)
         self.fc2.weight.data.zero_()
 
@@ -203,16 +211,21 @@ class StnGenerator(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
+        if self.which_model_netG == 'affine_stn':
+            theta = x.view(batch_size, -1, 2)
+            grid = F.affine_grid(theta, x.size())
+            transformed_x = F.grid_sample(x, grid)
+            return transformed_x, theta
         if self.which_model_netG == 'bounded_stn':
             points = F.tanh(x)
-        else:
+        elif self.which_model_netG == 'unbounded_stn':
             points = x
         source_control_points = points.view(batch_size, -1, 2)
         source_coordinate = self.tps(source_control_points)
         grid = source_coordinate.view(batch_size, self.image_height, self.image_width, 2)
         transformed_x = grid_sample(input, grid)
 
-        return transformed_x
+        return transformed_x, source_control_points
 
 
 # Defines the GAN loss which uses either LSGAN or the regular GAN.

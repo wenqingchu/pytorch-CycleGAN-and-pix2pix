@@ -2,8 +2,8 @@ import torch
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
-from PIL import Image
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 class Pix2PixStnModel(BaseModel):
     def name(self):
@@ -46,12 +46,13 @@ class Pix2PixStnModel(BaseModel):
         self.input_nc = opt.input_nc
         self.output_nc = opt.output_nc
         self.isTrain = opt.isTrain
+        self.which_model_netG = opt.which_model_netG
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
         #self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
         self.loss_names = ['G_GAN', 'D_real', 'D_fake']
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         #self.visual_names = ['real_A', 'fake_B', 'real_B']
-        self.visual_names = ['real_A_color', 'fake_B_color', 'real_B_color']
+        self.visual_names = ['real_A_color', 'real_A_color_grid', 'fake_B_color', 'real_B_color']
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G', 'D']
@@ -132,7 +133,36 @@ class Pix2PixStnModel(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
-        self.fake_B = self.netG(self.real_A)
+        if self.which_model_netG == 'bounded_stn' or 'unbounded_stn':
+            self.fake_B, source_control_points = self.netG(self.real_A)
+            real_A_color = self.real_A_color[0].cpu().float().numpy()
+            source_control_points = source_control_points[0].cpu().float().numpy()
+            real_A_color = Image.fromarray(real_A_color.transpose(1,2,0)).convert('RGB').resize((256, 256))
+            canvas = Image.new(mode='RGB', size=(128 * 4, 128 * 4), color=(128, 128, 128))
+            canvas.paste(real_A_color, (128, 128))
+            source_points = (source_control_points + 1) / 2 * 256 + 128
+            draw = ImageDraw.Draw(canvas)
+            for x, y in source_points:
+                draw.rectangle([x - 2, y - 2, x + 2, y + 2], fill=(255, 0, 0))
+            grid_size = 4
+            source_points = source_points.view(grid_size, grid_size, 2)
+            for j in range(grid_size):
+                for k in range(grid_size):
+                    x1, y1 = source_points[j, k]
+                    if j > 0:  # connect to left
+                        x2, y2 = source_points[j - 1, k]
+                        draw.line((x1, y1, x2, y2), fill=(255, 0, 0))
+                    if k > 0:  # connect to up
+                        x2, y2 = source_points[j, k - 1]
+                        draw.line((x1, y1, x2, y2), fill=(255, 0, 0))
+
+            real_A_color = np.asarray(canvas, np.uint8)
+            real_A_color_grid = real_A_color.transpose(2, 0, 1)
+            real_A_color_grid = real_A_color_grid[np.newaxis, :]
+            self.real_A_color_grid = torch.from_numpy(real_A_color_grid).to(self.device)
+            
+        else:
+            self.fake_B= self.netG(self.real_A)
         # visualize the fake_B
         fake_B_color = self.fake_B.data[0].cpu().float().numpy()
         fake_B_color = fake_B_color.transpose(1,2,0)
