@@ -32,12 +32,14 @@ class Pix2PixStnModel(BaseModel):
         return parser
 
     def initialize(self, opt):
-        self.palette = [128, 64, 128, 244, 35, 232, 70, 70, 70, 102, 102, 156, 190, 153, 153, 153, 153, 153, 250, 170, 30,
+        self.palette = np.array([128, 64, 128, 244, 35, 232, 70, 70, 70, 102, 102, 156, 190, 153, 153, 153, 153, 153, 250, 170, 30,
                    220, 220, 0, 107, 142, 35, 152, 251, 152, 70, 130, 180, 220, 20, 60, 255, 0, 0, 0, 0, 142, 0, 0, 70,
-                   0, 60, 100, 0, 80, 100, 0, 0, 230, 119, 11, 32]
+                   0, 60, 100, 0, 80, 100, 0, 0, 230, 119, 11, 32])
         zero_pad = 256 * 3 - len(self.palette)
         for i in range(zero_pad):
-            self.palette.append(0)
+            self.palette = np.append(self.palette,0)
+        self.palette = self.palette.reshape((256,3))
+
 
 
         BaseModel.initialize(self, opt)
@@ -98,9 +100,10 @@ class Pix2PixStnModel(BaseModel):
         real_A_color = input_label[0].numpy()
         real_A_color = real_A_color.transpose(1,2,0)
         real_A_color = np.asarray(np.argmax(real_A_color, axis=2), dtype=np.uint8)
-        real_A_color = Image.fromarray(real_A_color.astype(np.uint8)).convert('P')
-        real_A_color = real_A_color.putpalette(self.palette)
-        real_A_color = np.asarray(real_A_color, np.float32)
+        real_A_color_numpy = np.zeros((real_A_color.shape[0], real_A_color.shape[1],3))
+        for i in range(20):
+            real_A_color_numpy[real_A_color==i] = self.palette[i]
+        real_A_color = real_A_color_numpy.astype(np.uint8)
         real_A_color = real_A_color.transpose(2,0,1)
         real_A_color = real_A_color[np.newaxis, :]
         self.real_A_color = torch.from_numpy(real_A_color).to(self.device)
@@ -115,17 +118,15 @@ class Pix2PixStnModel(BaseModel):
         real_B_color = input_label[0].numpy()
         real_B_color = real_B_color.transpose(1,2,0)
         real_B_color = np.asarray(np.argmax(real_B_color, axis=2), dtype=np.uint8)
-        real_B_color = Image.fromarray(real_B_color.astype(np.uint8)).convert('P')
-        real_B_color = real_B_color.putpalette(self.palette)
-        real_B_color = np.asarray(real_B_color, np.float32)
+        real_B_color_numpy = np.zeros((real_B_color.shape[0], real_B_color.shape[1],3))
+        for i in range(20):
+            #print(sum(sum(real_B_color==i)))
+            real_B_color_numpy[real_B_color==i] = self.palette[i]
+        real_B_color = real_B_color_numpy.astype(np.uint8)
+        #print(sum(sum(real_B_color==10)))
         real_B_color = real_B_color.transpose(2, 0, 1)
         real_B_color = real_B_color[np.newaxis, :]
         self.real_B_color = torch.from_numpy(real_B_color).to(self.device)
-
-
-
-
-
         #self.real_A = input['A' if AtoB else 'B'].to(self.device)
         #self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
@@ -136,9 +137,10 @@ class Pix2PixStnModel(BaseModel):
         fake_B_color = self.fake_B.data[0].cpu().float().numpy()
         fake_B_color = fake_B_color.transpose(1,2,0)
         fake_B_color = np.asarray(np.argmax(fake_B_color, axis=2), dtype=np.uint8)
-        fake_B_color = Image.fromarray(fake_B_color.astype(np.uint8)).convert('P')
-        fake_B_color = fake_B_color.putpalette(self.palette)
-        fake_B_color = np.asarray(fake_B_color, np.float32)
+        fake_B_color_numpy = np.zeros((fake_B_color.shape[0], fake_B_color.shape[1],3))
+        for i in range(20):
+            fake_B_color_numpy[fake_B_color==i] = self.palette[i]
+        fake_B_color = fake_B_color_numpy.astype(np.uint8)
         fake_B_color = fake_B_color.transpose(2, 0, 1)
         fake_B_color = fake_B_color[np.newaxis, :]
         self.fake_B_color = torch.from_numpy(fake_B_color).to(self.device)

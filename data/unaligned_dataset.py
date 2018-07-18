@@ -23,7 +23,7 @@ class UnalignedDataset(BaseDataset):
                 A_paths.append(A_img_file)
             self.A_paths = A_paths
             B_paths = []
-            B_dir = os.path.join(self.root, 'GTA5/labels')
+            B_dir = os.path.join(self.root, 'GTA5/labels_new')
             B_list_path = 'semanticlabels_list/' + opt.phase + 'B.txt'
             B_img_ids = [i_id.strip() for i_id in open(B_list_path)]
             for name in B_img_ids:
@@ -61,18 +61,21 @@ class UnalignedDataset(BaseDataset):
 
             A_label = Image.open(A_path)
             B_label = Image.open(B_path)
-            A_label = self.transform(A_label)
-            B_label = self.transform(B_label)
+            #A_label = self.transform(A_label)
+            A_label = A_label.resize((256,256), Image.NEAREST)
+            #B_label = self.transform(B_label)
+            B_label = B_label.resize((256,256), Image.NEAREST)
             A_label = np.asarray(A_label, np.float32)
+            A_label = A_label[np.newaxis, :]
             B_label = np.asarray(B_label, np.float32)
+            B_label = B_label[np.newaxis, :]
             A_label_copy = 255 * np.ones(A_label.shape, dtype=np.float32)
             for ind in range(len(label2train)):
                 A_label_copy[A_label == label2train[ind][0]] = label2train[ind][1]
             A_label_copy[A_label_copy == 255] = 19
-            #A_label_copy = A_label_copy[np.newaxis, :]
-            #B_label_copy = B_label[np.newaxis, :]
             A_label_copy = A_label_copy
             B_label_copy = B_label
+            B_label_copy[B_label_copy == 255] = 19
             return {'A': A_label_copy, 'B': B_label_copy,
                     'A_paths': A_path, 'B_paths': B_path}
 
