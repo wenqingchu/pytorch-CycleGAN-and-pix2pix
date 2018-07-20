@@ -27,7 +27,7 @@ class Pix2PixStnModel(BaseModel):
         #    parser.set_defaults(which_model_netG='bounded_stn')
 
         if is_train:
-            parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
+            parser.add_argument('--lambda_L1', type=float, default=10.0, help='weight for L1 loss')
 
         return parser
 
@@ -48,12 +48,15 @@ class Pix2PixStnModel(BaseModel):
         self.isTrain = opt.isTrain
         self.which_model_netG = opt.which_model_netG
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
-        #self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
-        self.loss_names = ['G_GAN', 'D_real', 'D_fake']
+        self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
+        #self.loss_names = ['G_GAN', 'D_real', 'D_fake']
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         #self.visual_names = ['real_A', 'fake_B', 'real_B']
-        self.visual_names = ['real_A_color', 'real_A_color_grid', 'fake_B_color', 'real_B_color']
-        # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
+        if opt.which_model_netG =='unbounded_stn' or opt.which_model_netG == 'bounded_stn':
+            self.visual_names = ['real_A_color', 'real_A_color_grid', 'fake_B_color', 'real_B_color']
+        else:
+            self.visual_names = ['real_A_color', 'fake_B_color', 'real_B_color']
+            # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G', 'D']
         else:  # during test time, only load Gs
@@ -76,7 +79,7 @@ class Pix2PixStnModel(BaseModel):
             self.fake_B_pool = ImagePool(opt.pool_size)
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
-            #self.criterionL1 = torch.nn.L1Loss()
+            self.criterionL1 = torch.nn.L1Loss()
 
             # initialize optimizers
             self.optimizers = []
@@ -133,18 +136,22 @@ class Pix2PixStnModel(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
-        if self.which_model_netG == 'bounded_stn' or 'unbounded_stn':
+        if self.which_model_netG == 'bounded_stn' or self.which_model_netG == 'unbounded_stn':
             self.fake_B, source_control_points = self.netG(self.real_A)
             real_A_color = self.real_A_color[0].cpu().float().numpy()
-            source_control_points = source_control_points[0].cpu().float().numpy()
-            real_A_color = Image.fromarray(real_A_color.transpose(1,2,0)).convert('RGB').resize((256, 256))
+            #source_control_points = source_control_points[0].cpu().float().detach().numpy()
+            source_control_points = source_control_points[0].cpu().float().detach()
+            real_A_color = Image.fromarray(real_A_color.transpose(1,2,0).astype(np.uint8)).convert('RGB').resize((256, 256))
             canvas = Image.new(mode='RGB', size=(128 * 4, 128 * 4), color=(128, 128, 128))
             canvas.paste(real_A_color, (128, 128))
+            #print(source_control_points.shape)
             source_points = (source_control_points + 1) / 2 * 256 + 128
+            #print(source_points.shape)
             draw = ImageDraw.Draw(canvas)
             for x, y in source_points:
                 draw.rectangle([x - 2, y - 2, x + 2, y + 2], fill=(255, 0, 0))
             grid_size = 4
+            #print(source_points.shape)
             source_points = source_points.view(grid_size, grid_size, 2)
             for j in range(grid_size):
                 for k in range(grid_size):
@@ -156,11 +163,13 @@ class Pix2PixStnModel(BaseModel):
                         x2, y2 = source_points[j, k - 1]
                         draw.line((x1, y1, x2, y2), fill=(255, 0, 0))
 
-            real_A_color = np.asarray(canvas, np.uint8)
+            real_A_color = np.asarray(canvas.resize((256,256), Image.NEAREST), np.uint8)
             real_A_color_grid = real_A_color.transpose(2, 0, 1)
             real_A_color_grid = real_A_color_grid[np.newaxis, :]
             self.real_A_color_grid = torch.from_numpy(real_A_color_grid).to(self.device)
-            
+
+        elif self.which_model_netG == 'affine_stn':
+            self.fake_B, theta = self.netG(self.real_A)
         else:
             self.fake_B= self.netG(self.real_A)
         # visualize the fake_B
@@ -206,11 +215,11 @@ class Pix2PixStnModel(BaseModel):
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        #self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_B) * self.opt.lambda_L1
+        self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_A) * self.opt.lambda_L1
 
-        #self.loss_G = self.loss_G_GAN + self.loss_G_L1
+        self.loss_G = self.loss_G_GAN + self.loss_G_L1
 
-        self.loss_G = self.loss_G_GAN
+        #self.loss_G = self.loss_G_GAN
 
         self.loss_G.backward()
 

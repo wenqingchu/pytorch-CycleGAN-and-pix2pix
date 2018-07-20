@@ -170,6 +170,7 @@ class StnGenerator(nn.Module):
         for i in range(n_blocks):
             model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
 
+        model += [nn.AdaptiveAvgPool2d(4)]
         '''
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
@@ -185,11 +186,12 @@ class StnGenerator(nn.Module):
         '''
 
         self.model = nn.Sequential(*model)
-        self.fc1 = nn.Linear((image_width/mult) * (image_height/mult) * ngf * mult, 500)
+        #self.fc1 = nn.Linear((image_width/mult) * (image_height/mult) * ngf * mult, 50)
+        self.fc1 = nn.Linear(4 * 4 * ngf * mult, 50)
         if which_model_netG == 'affine_stn':
-            self.fc2 = nn.Linear(500, 6)
+            self.fc2 = nn.Linear(50, 6)
         else:
-            self.fc2 = nn.Linear(500, 2*grid_width*grid_width)
+            self.fc2 = nn.Linear(50, 2*grid_width*grid_width)
 
         if which_model_netG == 'unbounded_stn':
             bias = target_control_points.view(-1)
@@ -201,6 +203,7 @@ class StnGenerator(nn.Module):
 
         self.fc2.bias.data.copy_(bias)
         self.fc2.weight.data.zero_()
+        print(self.fc2.bias)
 
         self.tps = TPSGridGen(image_height, image_width, target_control_points)
 
@@ -208,13 +211,18 @@ class StnGenerator(nn.Module):
         batch_size = input.size(0)
         x = self.model(input)
         x = x.view(-1)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, training=self.training)
+        x = 0.00001 * F.relu(self.fc1(x))
+        #x = F.dropout(x, training=self.training)
         x = self.fc2(x)
+        print(self.fc2.bias)
         if self.which_model_netG == 'affine_stn':
-            theta = x.view(batch_size, -1, 2)
-            grid = F.affine_grid(theta, x.size())
-            transformed_x = F.grid_sample(x, grid)
+            #x = x / 100 + torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float)
+            theta = x.view(-1, 2, 3)
+            #print(theta.size())
+            #print(input.size())
+            #print(theta[0])
+            grid = F.affine_grid(theta, input.size())
+            transformed_x = F.grid_sample(input, grid, padding_mode='border')
             return transformed_x, theta
         if self.which_model_netG == 'bounded_stn':
             points = F.tanh(x)
