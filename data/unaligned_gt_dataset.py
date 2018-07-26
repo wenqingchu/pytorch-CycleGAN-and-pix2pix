@@ -4,9 +4,8 @@ from data.image_folder import make_dataset
 from PIL import Image
 import random
 import numpy as np
-import cv2
 
-class UnalignedDataset(BaseDataset):
+class UnalignedGtDataset(BaseDataset):
     @staticmethod
     def modify_commandline_options(parser, is_train):
         return parser
@@ -16,19 +15,19 @@ class UnalignedDataset(BaseDataset):
         self.root = opt.dataroot
         if self.root == './datasets/semanticlabels':
             A_paths = []
-            A_dir = os.path.join(self.root, 'cityscapes_prediction/gtFine')
+            A_dir = os.path.join(self.root, 'cityscapes/gtFine')
             A_list_path = 'semanticlabels_list/' + opt.phase + 'A.txt'
             A_img_ids = [i_id.strip() for i_id in open(A_list_path)]
             for name in A_img_ids:
-                A_img_file = os.path.join(A_dir, "%s/%s" % (opt.phase, name[:-3] + "npy"))
+                A_img_file = os.path.join(A_dir, "%s/%s" % (opt.phase, name[:-15] + "gtFine_labelIds.png"))
                 A_paths.append(A_img_file)
             self.A_paths = A_paths
             B_paths = []
-            B_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+            B_dir = os.path.join(self.root, 'GTA5/labels_new')
             B_list_path = 'semanticlabels_list/' + opt.phase + 'B.txt'
             B_img_ids = [i_id.strip() for i_id in open(B_list_path)]
             for name in B_img_ids:
-                B_img_file = os.path.join(B_dir, "%s" % (name[:-3]+"npy"))
+                B_img_file = os.path.join(B_dir, "%s" % (name))
                 B_paths.append(B_img_file)
             self.B_paths = B_paths
         else:
@@ -66,27 +65,17 @@ class UnalignedDataset(BaseDataset):
             A_label = A_label.resize((256,256), Image.NEAREST)
             #B_label = self.transform(B_label)
             B_label = B_label.resize((256,256), Image.NEAREST)
-            A_label = np.load(A_path)
-            B_label = np.load(B_path)
-            A_label = cv2.resize(A_label, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
-            B_label = cv2.resize(B_label, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
-
             A_label = np.asarray(A_label, np.float32)
-            #A_label = A_label[np.newaxis, :]
-            A_label = np.transpose(A_label, (2,0,1))
+            A_label = A_label[np.newaxis, :]
             B_label = np.asarray(B_label, np.float32)
-            #B_label = B_label[np.newaxis, :]
-            B_label = np.transpose(B_label, (2,0,1))
-
-            #A_label_copy = 255 * np.ones(A_label.shape, dtype=np.float32)
-            #for ind in range(len(label2train)):
-            #    A_label_copy[A_label == label2train[ind][0]] = label2train[ind][1]
-            #A_label_copy[A_label_copy == 255] = 19
-            #A_label_copy = A_label_copy
-            #B_label_copy = B_label
-            #B_label_copy[B_label_copy == 255] = 19
-            A_label_copy = A_label
+            B_label = B_label[np.newaxis, :]
+            A_label_copy = 255 * np.ones(A_label.shape, dtype=np.float32)
+            for ind in range(len(label2train)):
+                A_label_copy[A_label == label2train[ind][0]] = label2train[ind][1]
+            A_label_copy[A_label_copy == 255] = 19
+            A_label_copy = A_label_copy
             B_label_copy = B_label
+            B_label_copy[B_label_copy == 255] = 19
             return {'A': A_label_copy, 'B': B_label_copy,
                     'A_paths': A_path, 'B_paths': B_path}
 
@@ -117,4 +106,4 @@ class UnalignedDataset(BaseDataset):
         return max(self.A_size, self.B_size)
 
     def name(self):
-        return 'UnalignedDataset'
+        return 'UnalignedGtDataset'

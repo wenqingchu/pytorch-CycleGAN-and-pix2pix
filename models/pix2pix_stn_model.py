@@ -86,10 +86,58 @@ class Pix2PixStnModel(BaseModel):
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(),
-                                                lr=opt.lr, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.1, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
+    def set_input(self, input):
+        AtoB = self.opt.which_direction == 'AtoB'
+        real_A = input['A' if AtoB else 'B']
+        real_B = input['B' if AtoB else 'A']
+        #size = real_A.size()
+        #oneHot_size = (size[0], self.input_nc, size[2], size[3])
+        #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
+        #input_label = input_label.scatter_(1, real_A.long(), 1.0)
+        #print(input_label.size())
+        input_label = torch.nn.functional.softmax(real_A, dim=1)
+        self.real_A = input_label.to(self.device)
+        # visualize the real_A
+        real_A_color = input_label[0].numpy()
+        real_A_color = real_A_color.transpose(1,2,0)
+        real_A_color = np.asarray(np.argmax(real_A_color, axis=2), dtype=np.uint8)
+        real_A_color_numpy = np.zeros((real_A_color.shape[0], real_A_color.shape[1],3))
+        for i in range(20):
+            real_A_color_numpy[real_A_color==i] = self.palette[i]
+        real_A_color = real_A_color_numpy.astype(np.uint8)
+        real_A_color = real_A_color.transpose(2,0,1)
+        real_A_color = real_A_color[np.newaxis, :]
+        self.real_A_color = torch.from_numpy(real_A_color).to(self.device)
+
+        #size = real_B.size()
+        #oneHot_size = (size[0], self.output_nc, size[2], size[3])
+        #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
+        #input_label = input_label.scatter_(1, real_B.long(), 1.0)
+        #print(input_label.size())
+        input_label = torch.nn.functional.softmax(real_B, dim=1)
+        self.real_B = input_label.to(self.device)
+        # visualize the real_B
+        real_B_color = input_label[0].numpy()
+        real_B_color = real_B_color.transpose(1,2,0)
+        real_B_color = np.asarray(np.argmax(real_B_color, axis=2), dtype=np.uint8)
+        real_B_color_numpy = np.zeros((real_B_color.shape[0], real_B_color.shape[1],3))
+        for i in range(20):
+            #print(sum(sum(real_B_color==i)))
+            real_B_color_numpy[real_B_color==i] = self.palette[i]
+        real_B_color = real_B_color_numpy.astype(np.uint8)
+        #print(sum(sum(real_B_color==10)))
+        real_B_color = real_B_color.transpose(2, 0, 1)
+        real_B_color = real_B_color[np.newaxis, :]
+        self.real_B_color = torch.from_numpy(real_B_color).to(self.device)
+        #self.real_A = input['A' if AtoB else 'B'].to(self.device)
+        #self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        self.image_paths = input['A_paths' if AtoB else 'B_paths']
+
+'''
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
@@ -134,6 +182,7 @@ class Pix2PixStnModel(BaseModel):
         #self.real_A = input['A' if AtoB else 'B'].to(self.device)
         #self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
+'''
 
     def forward(self):
         if self.which_model_netG == 'bounded_stn' or self.which_model_netG == 'unbounded_stn':
