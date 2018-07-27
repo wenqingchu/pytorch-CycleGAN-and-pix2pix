@@ -163,7 +163,7 @@ class Pix2PixStnModel(BaseModel):
                         x2, y2 = source_points[j, k - 1]
                         draw.line((x1, y1, x2, y2), fill=(255, 0, 0))
 
-            real_A_color = np.asarray(canvas.resize((256,256), Image.NEAREST), np.uint8)
+            real_A_color = np.asarray(canvas.resize((256,256), Image.BICUBIC), np.uint8)
             real_A_color_grid = real_A_color.transpose(2, 0, 1)
             real_A_color_grid = real_A_color_grid[np.newaxis, :]
             self.real_A_color_grid = torch.from_numpy(real_A_color_grid).to(self.device)

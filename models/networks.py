@@ -66,11 +66,18 @@ def init_weights(net, init_type='normal', gain=0.02):
 
 
 def init_net(net, init_type='normal', gpu_ids=[]):
+    if hasattr(net, 'which_model_netG'):
+        which_model_netG = net.which_model_netG
+        fc2_bias = net.fc2_bias
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
         net.to(gpu_ids[0])
-        net = torch.nn.DataParallel(net, gpu_ids)
+        #net = torch.nn.DataParallel(net, gpu_ids)
     init_weights(net, init_type)
+    if hasattr(net, 'which_model_netG'):
+        if which_model_netG == 'unbounded_stn' or which_model_netG == 'bounded_stn' or which_model_netG == 'affine_stn':
+            net.fc2.bias.data.copy_(fc2_bias)
+            net.fc2.weight.data.zero_()
     return net
 
 def define_G(input_nc, output_nc, ngf, which_model_netG, image_width, image_height, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
@@ -201,9 +208,10 @@ class StnGenerator(nn.Module):
         elif which_model_netG == 'affine_stn':
             bias = torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float)
 
-        self.fc2.bias.data.copy_(bias)
-        self.fc2.weight.data.zero_()
-        print(self.fc2.bias)
+        #self.fc2.bias.data.copy_(bias)
+        #self.fc2.weight.data.zero_()
+        #print(self.fc2.bias)
+        self.fc2_bias = bias
 
         self.tps = TPSGridGen(image_height, image_width, target_control_points)
 
@@ -211,10 +219,10 @@ class StnGenerator(nn.Module):
         batch_size = input.size(0)
         x = self.model(input)
         x = x.view(-1)
-        x = 0.00001 * F.relu(self.fc1(x))
-        #x = F.dropout(x, training=self.training)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
         x = self.fc2(x)
-        print(self.fc2.bias)
+        #print(self.fc2.bias)
         if self.which_model_netG == 'affine_stn':
             #x = x / 100 + torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float)
             theta = x.view(-1, 2, 3)
