@@ -108,6 +108,16 @@ def define_D(input_nc, ndf, which_model_netD,
     netD = None
     norm_layer = get_norm_layer(norm_type=norm)
 
+    if which_model_netD == "pretrained":
+        netD = FCDiscriminator(input_nc, ndf, use_sigmoid=use_sigmoid)
+        if len(gpu_ids) > 0:
+            assert (torch.cuda.is_available())
+            netD.to(gpu_ids[0])
+        pretrained_path = "/home/chuwenqing/.encoding/models/pretrained_discriminator.pth"
+        netD.load_state_dict(torch.load(pretrained_path))
+        return netD
+
+
     if which_model_netD == 'basic':
         netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
     elif which_model_netD == 'n_layers':
@@ -503,6 +513,32 @@ class NLayerDiscriminator(nn.Module):
     def forward(self, input):
         return self.model(input)
 
+
+class FCDiscriminator(nn.Module):
+    def __init__(self, input_nc, ndf=32, use_sigmoid=False):
+        super(FCDiscriminator, self).__init__()
+
+        self.conv1 = nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(ndf, ndf*2, kernel_size=4, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1)
+        self.conv4 = nn.Conv2d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1)
+        self.classifier = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=2, padding=1)
+        self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.leaky_relu(x)
+        x = self.conv2(x)
+        x = self.leaky_relu(x)
+        x = self.conv3(x)
+        x = self.leaky_relu(x)
+        x = self.conv4(x)
+        x = self.leaky_relu(x)
+        x = self.classifier(x)
+        return self.sigmoid(x)
+		#x = self.up_sample(x)
+		#x = self.sigmoid(x)
 
 class PixelDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
