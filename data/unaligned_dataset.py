@@ -60,12 +60,12 @@ class UnalignedDataset(BaseDataset):
                            [22, 9], [23, 10], [24, 11], [25, 12],
                            [26, 13], [27, 14], [28, 15], [29, 255], [30, 255], [31, 16], [32, 17], [33, 18], [-1, 255]]
 
-            A_label = Image.open(A_path)
-            B_label = Image.open(B_path)
+            #A_label = Image.open(A_path)
+            #B_label = Image.open(B_path)
             #A_label = self.transform(A_label)
-            A_label = A_label.resize((256,256), Image.NEAREST)
+            #A_label = A_label.resize((256,256), Image.NEAREST)
             #B_label = self.transform(B_label)
-            B_label = B_label.resize((256,256), Image.NEAREST)
+            #B_label = B_label.resize((256,256), Image.NEAREST)
             A_label = np.load(A_path)
             B_label = np.load(B_path)
             A_label = cv2.resize(A_label, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
