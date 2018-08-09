@@ -48,6 +48,23 @@ class UnalignedDataset(BaseDataset):
                 B_img_file = os.path.join(B_dir, "%s" % (name[:-3] + "npy"))
                 B_paths.append(B_img_file)
             self.B_paths = B_paths
+        elif opt.model == 'stn_gan':
+            A_paths = []
+            A_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+            A_list_path = 'semanticlabels_list/trainB.txt'
+            A_img_ids = [i_id.strip() for i_id in open(A_list_path)]
+            for name in A_img_ids:
+                A_img_file = os.path.join(A_dir, "%s" % (name[:-3] + "npy"))
+                A_paths.append(A_img_file)
+            self.A_paths = A_paths
+            B_paths = []
+            B_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+            B_list_path = 'semanticlabels_list/valB.txt'
+            B_img_ids = [i_id.strip() for i_id in open(B_list_path)]
+            for name in B_img_ids:
+                B_img_file = os.path.join(B_dir, "%s" % (name[:-3] + "npy"))
+                B_paths.append(B_img_file)
+            self.B_paths = B_paths
 
 
 
@@ -76,6 +93,10 @@ class UnalignedDataset(BaseDataset):
         else:
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
+        if self.opt.model == 'stn_gan':
+            index_C = random.randint(0, self.A_size - 1)
+            C_path = self.A_paths[index_C]
+
         # print('(A, B) = (%d, %d)' % (index_A, index_B))
         if self.root == './datasets/semanticlabels':
             # A is cityscapes, B is GTA5
@@ -112,8 +133,23 @@ class UnalignedDataset(BaseDataset):
             #B_label_copy[B_label_copy == 255] = 19
             A_label_copy = A_label
             B_label_copy = B_label
-            return {'A': A_label_copy, 'B': B_label_copy,
+            if self.opt.model != "stn_gan":
+                return {'A': A_label_copy, 'B': B_label_copy,
                     'A_paths': A_path, 'B_paths': B_path}
+            else:
+                C_label = np.load(C_path)
+                C_label = cv2.resize(C_label, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
+                C_label = np.asarray(C_label, np.float32)
+                C_label = np.transpose(C_label, (2, 0, 1))
+                C_label_copy = C_label
+                return {'A': A_label_copy, 'B': B_label_copy, 'C': C_label_copy,
+                        'A_paths': A_path, 'B_paths': B_path, 'C_paths': C_path}
+
+
+
+
+
+
 
         A_img = Image.open(A_path).convert('RGB')
         B_img = Image.open(B_path).convert('RGB')
