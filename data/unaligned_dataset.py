@@ -31,6 +31,31 @@ class UnalignedDataset(BaseDataset):
                 B_img_file = os.path.join(B_dir, "%s" % (name[:-3]+"npy"))
                 B_paths.append(B_img_file)
             self.B_paths = B_paths
+        elif opt.model == 'stn_prediction':
+            A_paths = []
+            A_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+            A_list_path = 'semanticlabels_list/trainB.txt'
+            A_img_ids = [i_id.strip() for i_id in open(A_list_path)]
+            for name in A_img_ids:
+                A_img_file = os.path.join(A_dir, "%s" % (name[:-3] + "npy"))
+                A_paths.append(A_img_file)
+            self.A_paths = A_paths
+            B_paths = []
+            B_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+            B_list_path = 'semanticlabels_list/valB.txt'
+            B_img_ids = [i_id.strip() for i_id in open(B_list_path)]
+            for name in B_img_ids:
+                B_img_file = os.path.join(B_dir, "%s" % (name[:-3] + "npy"))
+                B_paths.append(B_img_file)
+            self.B_paths = B_paths
+
+
+
+
+
+
+
+
         else:
             self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')
             self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')
@@ -89,7 +114,6 @@ class UnalignedDataset(BaseDataset):
             B_label_copy = B_label
             return {'A': A_label_copy, 'B': B_label_copy,
                     'A_paths': A_path, 'B_paths': B_path}
-
 
         A_img = Image.open(A_path).convert('RGB')
         B_img = Image.open(B_path).convert('RGB')

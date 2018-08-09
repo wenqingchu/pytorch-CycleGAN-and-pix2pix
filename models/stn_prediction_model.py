@@ -42,8 +42,8 @@ class StnPredictionModel(BaseModel):
             self.palette = np.append(self.palette,0)
         self.palette = self.palette.reshape((256,3))
 
-        self.theta = np.array([[1.0,0,0],[0,1,0],[0,0,1]], dtype=np.float)
-        self.theta_i = np.array([[1.0, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float)
+        self.theta = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]], dtype=np.float)
+        self.theta_i = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float)
 
 
 
@@ -62,7 +62,7 @@ class StnPredictionModel(BaseModel):
             self.visual_names = ['real_A_color', 'real_A_color_grid', 'fake_B_color', 'real_B_color']
         else:
             #self.visual_names = ['real_A_color', 'fake_B_color', 'real_B_color']
-            self.visual_names = ['real_A_color', 'transformed_A_color', 'recovered_A_color']
+            self.visual_names = ['real_A_color', 'transformed_A_color', 'recovered_A_color', 'real_B_color', 'transformed_B_color', 'recovered_B_color']
             # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G', 'D']
@@ -101,11 +101,7 @@ class StnPredictionModel(BaseModel):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
         real_B = input['B' if AtoB else 'A']
-        #size = real_A.size()
-        #oneHot_size = (size[0], self.input_nc, size[2], size[3])
-        #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
-        #input_label = input_label.scatter_(1, real_A.long(), 1.0)
-        #print(input_label.size())
+
         input_label = torch.nn.functional.softmax(real_A, dim=1)
         self.real_A = input_label.to(self.device)
         # visualize the real_A
@@ -126,49 +122,31 @@ class StnPredictionModel(BaseModel):
         for i in range(2):
             for j in range(3):
                 tmp = random.random()-1
-                #print(tmp)
                 tmp_theta[i][j] = self.theta[i][j] + tmp*0.5
-                #print(self.theta[i][j])
         tmp_theta[2][2] = 1
-        #print(tmp_theta)
 
         theta_m = np.mat(tmp_theta)
-        #print(theta_m)
         self.theta_i = np.asarray(theta_m.I)
 
         self.torch_theta = torch.from_numpy(tmp_theta[:2][:])
         self.torch_theta = self.torch_theta.view(-1, 2, 3)
         grid = F.affine_grid(self.torch_theta, self.real_A.size())
-        #print(grid.dtype)
-        #print(self.real_A.dtype)
         grid = grid.float()
-        #print(grid.dtype)
         self.transformed_A = F.grid_sample(self.real_A, grid.to(self.device), padding_mode='border')
-
-
-
-        input_label = torch.nn.functional.softmax(real_B, dim=1)
-        self.real_B = input_label.to(self.device)
         # visualize the transformed_A
         transformed_A_color = self.transformed_A.data[0].cpu().numpy()
         transformed_A_color = transformed_A_color.transpose(1,2,0)
         transformed_A_color = np.asarray(np.argmax(transformed_A_color, axis=2), dtype=np.uint8)
         transformed_A_color_numpy = np.zeros((transformed_A_color.shape[0], transformed_A_color.shape[1],3))
         for i in range(20):
-            #print(sum(sum(real_B_color==i)))
             transformed_A_color_numpy[transformed_A_color==i] = self.palette[i]
         transformed_A_color = transformed_A_color_numpy.astype(np.uint8)
-        #print(sum(sum(real_B_color==10)))
         transformed_A_color = transformed_A_color.transpose(2, 0, 1)
         transformed_A_color = transformed_A_color[np.newaxis, :]
         self.transformed_A_color = torch.from_numpy(transformed_A_color).to(self.device)
 
 
-        #size = real_B.size()
-        #oneHot_size = (size[0], self.output_nc, size[2], size[3])
-        #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
-        #input_label = input_label.scatter_(1, real_B.long(), 1.0)
-        #print(input_label.size())
+
         input_label = torch.nn.functional.softmax(real_B, dim=1)
         self.real_B = input_label.to(self.device)
         # visualize the real_B
@@ -177,13 +155,26 @@ class StnPredictionModel(BaseModel):
         real_B_color = np.asarray(np.argmax(real_B_color, axis=2), dtype=np.uint8)
         real_B_color_numpy = np.zeros((real_B_color.shape[0], real_B_color.shape[1],3))
         for i in range(20):
-            #print(sum(sum(real_B_color==i)))
             real_B_color_numpy[real_B_color==i] = self.palette[i]
         real_B_color = real_B_color_numpy.astype(np.uint8)
-        #print(sum(sum(real_B_color==10)))
         real_B_color = real_B_color.transpose(2, 0, 1)
         real_B_color = real_B_color[np.newaxis, :]
         self.real_B_color = torch.from_numpy(real_B_color).to(self.device)
+        grid = F.affine_grid(self.torch_theta, self.real_B.size())
+        grid = grid.float()
+        self.transformed_B = F.grid_sample(self.real_B, grid.to(self.device), padding_mode='border')
+        # visualize the transformed_B
+        transformed_B_color = self.transformed_B.data[0].cpu().numpy()
+        transformed_B_color = transformed_B_color.transpose(1, 2, 0)
+        transformed_B_color = np.asarray(np.argmax(transformed_B_color, axis=2), dtype=np.uint8)
+        transformed_B_color_numpy = np.zeros((transformed_B_color.shape[0], transformed_B_color.shape[1], 3))
+        for i in range(20):
+            transformed_B_color_numpy[transformed_B_color == i] = self.palette[i]
+        transformed_B_color = transformed_B_color_numpy.astype(np.uint8)
+        transformed_B_color = transformed_B_color.transpose(2, 0, 1)
+        transformed_B_color = transformed_B_color[np.newaxis, :]
+        self.transformed_B_color = torch.from_numpy(transformed_B_color).to(self.device)
+
         #self.real_A = input['A' if AtoB else 'B'].to(self.device)
         #self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
@@ -224,23 +215,31 @@ class StnPredictionModel(BaseModel):
         elif self.which_model_netG == 'affine_stn':
             #self.fake_B, theta = self.netG(self.real_A)
             self.recovered_A, self.predicted_theta = self.netG(self.transformed_A)
+            self.recovered_B, self.predicted_theta_B = self.netG(self.transformed_B)
         else:
             self.fake_B= self.netG(self.real_A)
         # visualize the fake_B
         recovered_A_color = self.recovered_A.data[0].cpu().float().numpy()
-        #print(recovered_A_color.shape)
         recovered_A_color = recovered_A_color.transpose(1,2,0)
         recovered_A_color = np.asarray(np.argmax(recovered_A_color, axis=2), dtype=np.uint8)
         recovered_A_color_numpy = np.zeros((recovered_A_color.shape[0], recovered_A_color.shape[1],3))
-        #print(recovered_A_color_numpy.shape)
         for i in range(20):
             recovered_A_color_numpy[recovered_A_color==i] = self.palette[i]
         recovered_A_color = recovered_A_color_numpy.astype(np.uint8)
-        #print(recovered_A_color.shape)
         recovered_A_color = recovered_A_color.transpose(2, 0, 1)
         recovered_A_color = recovered_A_color[np.newaxis, :]
         self.recovered_A_color = torch.from_numpy(recovered_A_color).to(self.device)
 
+        recovered_B_color = self.recovered_B.data[0].cpu().float().numpy()
+        recovered_B_color = recovered_B_color.transpose(1,2,0)
+        recovered_B_color = np.asarray(np.argmax(recovered_B_color, axis=2), dtype=np.uint8)
+        recovered_B_color_numpy = np.zeros((recovered_B_color.shape[0], recovered_B_color.shape[1],3))
+        for i in range(20):
+            recovered_B_color_numpy[recovered_B_color==i] = self.palette[i]
+        recovered_B_color = recovered_B_color_numpy.astype(np.uint8)
+        recovered_B_color = recovered_B_color.transpose(2, 0, 1)
+        recovered_B_color = recovered_B_color[np.newaxis, :]
+        self.recovered_B_color = torch.from_numpy(recovered_B_color).to(self.device)
 
     def backward_D(self):
         # Fake
