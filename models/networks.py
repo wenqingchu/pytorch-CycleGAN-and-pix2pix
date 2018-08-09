@@ -114,11 +114,12 @@ def define_D(input_nc, ndf, which_model_netD,
             assert (torch.cuda.is_available())
             netD.to(gpu_ids[0])
         pretrained_path = "/home/chuwenqing/.encoding/models/pretrained_discriminator.pth"
+        print(pretrained_path)
         netD.load_state_dict(torch.load(pretrained_path))
         return netD
 
 
-    if which_model_netD == 'basic':
+    elif which_model_netD == 'basic':
         netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
     elif which_model_netD == 'n_layers':
         netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
@@ -133,6 +134,13 @@ def define_D(input_nc, ndf, which_model_netD,
 ##############################################################################
 # Classes
 ##############################################################################
+
+
+
+def print_grad(grad):
+    print('stn_grid_grad')
+    #print(grad.data.cpu())
+    np.save('grid_grad.npy', grad.data.cpu().numpy())
 
 class StnGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, which_model_netG, image_width, image_height, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect'):
@@ -232,6 +240,9 @@ class StnGenerator(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
+        #print("stn_prediction")
+        #print(x.data.cpu())
+        #x.register_hook(print_grad)
         #print(self.fc2.bias)
         if self.which_model_netG == 'affine_stn':
             #x = x / 100 + torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float)
@@ -240,6 +251,9 @@ class StnGenerator(nn.Module):
             #print(input.size())
             #print(theta[0])
             grid = F.affine_grid(theta, input.size())
+            #print(grid.data.size())
+            np.save('grid_data.npy', grid.data.cpu().numpy())
+            grid.register_hook(print_grad)
             transformed_x = F.grid_sample(input, grid, padding_mode='border')
             return transformed_x, theta
         if self.which_model_netG == 'bounded_stn':
@@ -267,6 +281,7 @@ class GANLoss(nn.Module):
             self.loss = nn.MSELoss()
         else:
             self.loss = nn.BCELoss()
+            #self.loss = nn.BCEWithLogitsLoss()
 
     def get_target_tensor(self, input, target_is_real):
         if target_is_real:
@@ -537,6 +552,7 @@ class FCDiscriminator(nn.Module):
         x = self.leaky_relu(x)
         x = self.classifier(x)
         return self.sigmoid(x)
+        #return x
 		#x = self.up_sample(x)
 		#x = self.sigmoid(x)
 

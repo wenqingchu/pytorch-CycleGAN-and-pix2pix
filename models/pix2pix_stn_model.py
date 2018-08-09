@@ -27,7 +27,7 @@ class Pix2PixStnModel(BaseModel):
         #    parser.set_defaults(which_model_netG='bounded_stn')
 
         if is_train:
-            parser.add_argument('--lambda_L1', type=float, default=10.0, help='weight for L1 loss')
+            parser.add_argument('--lambda_L1', type=float, default=50.0, help='weight for L1 loss')
 
         return parser
 
@@ -84,9 +84,9 @@ class Pix2PixStnModel(BaseModel):
             # initialize optimizers
             self.optimizers = []
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(),
-                                                lr=opt.lr, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.01, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(),
-                                                lr=opt.lr*0.1, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.00, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -94,6 +94,7 @@ class Pix2PixStnModel(BaseModel):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
         real_B = input['B' if AtoB else 'A']
+        print(input['A_paths'])
         #size = real_A.size()
         #oneHot_size = (size[0], self.input_nc, size[2], size[3])
         #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()

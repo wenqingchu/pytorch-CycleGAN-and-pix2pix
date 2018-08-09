@@ -3,7 +3,8 @@ from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models import create_model
 from util.visualizer import Visualizer
-
+import torch
+import sys
 if __name__ == '__main__':
     opt = TrainOptions().parse()
     data_loader = CreateDataLoader(opt)
@@ -22,6 +23,9 @@ if __name__ == '__main__':
         epoch_iter = 0
 
         for i, data in enumerate(dataset):
+            print(i)
+            if i==500:
+                sys.exit(0)
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
@@ -58,3 +62,4 @@ if __name__ == '__main__':
         print('End of epoch %d / %d \t Time Taken: %d sec' %
               (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
         model.update_learning_rate()
+        #torch.save(model.netD.state_dict(), '/home/chuwenqing/Classify_' + str(epoch) + '.pth')

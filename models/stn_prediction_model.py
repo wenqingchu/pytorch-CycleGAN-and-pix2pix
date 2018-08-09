@@ -42,8 +42,8 @@ class StnPredictionModel(BaseModel):
             self.palette = np.append(self.palette,0)
         self.palette = self.palette.reshape((256,3))
 
-        self.theta = np.array([[1,0,0],[0,1,0],[0,0,1]])
-        self.theta_i = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        self.theta = np.array([[1.0,0,0],[0,1,0],[0,0,1]], dtype=np.float)
+        self.theta_i = np.array([[1.0, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float)
 
 
 
@@ -53,7 +53,8 @@ class StnPredictionModel(BaseModel):
         self.isTrain = opt.isTrain
         self.which_model_netG = opt.which_model_netG
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
-        self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
+        #self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
+        self.loss_names = ['G_L1', 'STN_L1']
         #self.loss_names = ['G_GAN', 'D_real', 'D_fake']
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         #self.visual_names = ['real_A', 'fake_B', 'real_B']
@@ -120,17 +121,29 @@ class StnPredictionModel(BaseModel):
         self.real_A_color = torch.from_numpy(real_A_color).to(self.device)
 
 
+        tmp_theta = np.zeros_like(self.theta)
+        tmp_theta.dtype = self.theta.dtype
         for i in range(2):
             for j in range(3):
-                self.theta[i][j] = random.random() * 2 - 1
+                tmp = random.random()-1
+                #print(tmp)
+                tmp_theta[i][j] = self.theta[i][j] + tmp*0.5
+                #print(self.theta[i][j])
+        tmp_theta[2][2] = 1
+        #print(tmp_theta)
 
-        theta_m = np.mat(self.theta)
+        theta_m = np.mat(tmp_theta)
+        #print(theta_m)
         self.theta_i = np.asarray(theta_m.I)
 
-        self.torch_theta = torch.from_numpy(self.theta[:2][:])
+        self.torch_theta = torch.from_numpy(tmp_theta[:2][:])
         self.torch_theta = self.torch_theta.view(-1, 2, 3)
         grid = F.affine_grid(self.torch_theta, self.real_A.size())
-        self.transformed_A = F.grid_sample(self.real_A, grid, padding_mode='border')
+        #print(grid.dtype)
+        #print(self.real_A.dtype)
+        grid = grid.float()
+        #print(grid.dtype)
+        self.transformed_A = F.grid_sample(self.real_A, grid.to(self.device), padding_mode='border')
 
 
 
@@ -215,12 +228,15 @@ class StnPredictionModel(BaseModel):
             self.fake_B= self.netG(self.real_A)
         # visualize the fake_B
         recovered_A_color = self.recovered_A.data[0].cpu().float().numpy()
+        #print(recovered_A_color.shape)
         recovered_A_color = recovered_A_color.transpose(1,2,0)
         recovered_A_color = np.asarray(np.argmax(recovered_A_color, axis=2), dtype=np.uint8)
         recovered_A_color_numpy = np.zeros((recovered_A_color.shape[0], recovered_A_color.shape[1],3))
+        #print(recovered_A_color_numpy.shape)
         for i in range(20):
             recovered_A_color_numpy[recovered_A_color==i] = self.palette[i]
-        recovered_A_color = recovered_A_color.astype(np.uint8)
+        recovered_A_color = recovered_A_color_numpy.astype(np.uint8)
+        #print(recovered_A_color.shape)
         recovered_A_color = recovered_A_color.transpose(2, 0, 1)
         recovered_A_color = recovered_A_color[np.newaxis, :]
         self.recovered_A_color = torch.from_numpy(recovered_A_color).to(self.device)
@@ -256,11 +272,11 @@ class StnPredictionModel(BaseModel):
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A) * self.opt.lambda_L1
+        self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A)
 
-        self.loss_STN_L1 = self.criterionL1(self.predicted_theta, torch.from_numpy(self.theta_i[:2][:]).view(-1,2,3).to(self.device))
+        self.loss_STN_L1 = self.criterionL1(self.predicted_theta, torch.from_numpy(self.theta_i[:2][:]).view(-1,2,3).float().to(self.device))
 
-        self.loss_G = self.loss_G_GAN + self.loss_G_L1 + self.loss_STN_L1
+        self.loss_G = self.loss_G_L1 * self.opt.lambda_L1 + self.loss_STN_L1
 
         #self.loss_G = self.loss_G_GAN
 
@@ -269,10 +285,10 @@ class StnPredictionModel(BaseModel):
     def optimize_parameters(self):
         self.forward()
         # update D
-        self.set_requires_grad(self.netD, True)
-        self.optimizer_D.zero_grad()
-        self.backward_D()
-        self.optimizer_D.step()
+        #self.set_requires_grad(self.netD, True)
+        #self.optimizer_D.zero_grad()
+        #self.backward_D()
+        #self.optimizer_D.step()
 
         # update G
         self.set_requires_grad(self.netD, False)
