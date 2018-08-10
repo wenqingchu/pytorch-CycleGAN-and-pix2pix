@@ -252,8 +252,8 @@ class StnGenerator(nn.Module):
             #print(theta[0])
             grid = F.affine_grid(theta, input.size())
             #print(grid.data.size())
-            np.save('grid_data.npy', grid.data.cpu().numpy())
-            grid.register_hook(print_grad)
+            #np.save('grid_data.npy', grid.data.cpu().numpy())
+            #grid.register_hook(print_grad)
             transformed_x = F.grid_sample(input, grid, padding_mode='border')
             return transformed_x, theta
         if self.which_model_netG == 'bounded_stn':

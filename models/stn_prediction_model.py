@@ -275,7 +275,8 @@ class StnPredictionModel(BaseModel):
 
         self.loss_STN_L1 = self.criterionL1(self.predicted_theta, torch.from_numpy(self.theta_i[:2][:]).view(-1,2,3).float().to(self.device))
 
-        self.loss_G = self.loss_G_L1 * self.opt.lambda_L1 + self.loss_STN_L1
+        #self.loss_G = self.loss_G_L1 * self.opt.lambda_L1 + self.loss_STN_L1
+        self.loss_G = self.loss_G_L1 * 1.0 + self.loss_STN_L1 * 0.0
 
         #self.loss_G = self.loss_G_GAN
 
