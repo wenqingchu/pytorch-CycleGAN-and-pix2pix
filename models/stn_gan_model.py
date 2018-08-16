@@ -18,6 +18,7 @@ class StnGanModel(BaseModel):
         # (https://phillipi.github.io/pix2pix/)
         parser.set_defaults(pool_size=0)
         parser.set_defaults(no_lsgan=True)
+        parser.set_defaults(gan='vanilla')
         parser.set_defaults(norm='batch')
         # parser.set_defaults(dataset_mode='aligned')
         parser.set_defaults(dataset_mode='unaligned')
@@ -53,9 +54,9 @@ class StnGanModel(BaseModel):
         self.isTrain = opt.isTrain
         self.which_model_netG = opt.which_model_netG
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
-        #self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
+        self.loss_names = ['G_GAN', 'D_real', 'D_fake']
         #self.loss_names = ['G_L1', 'STN_L1']
-        self.loss_names = ['G_GAN', 'G_L1', 'STN_L1', 'D_real', 'D_fake']
+        #self.loss_names = ['G_GAN', 'G_L1', 'STN_L1', 'D_real', 'D_fake']
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         #self.visual_names = ['real_A', 'fake_B', 'real_B']
         if opt.which_model_netG =='unbounded_stn' or opt.which_model_netG == 'bounded_stn':
@@ -70,13 +71,13 @@ class StnGanModel(BaseModel):
             self.model_names = ['G']
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
-                                      opt.which_model_netG, opt.fineSize, opt.fineSize, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+                                      opt.which_model_netG, opt.fineSize, opt.fineSize, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids, opt.gan)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
             self.netD = networks.define_D(opt.output_nc, opt.ndf,
                                           opt.which_model_netD,
-                                          opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
+                                          opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids, opt.gan)
             #self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf,
             #                              opt.which_model_netD,
             #                              opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
@@ -85,7 +86,7 @@ class StnGanModel(BaseModel):
             #self.fake_AB_pool = ImagePool(opt.pool_size)
             self.fake_B_pool = ImagePool(opt.pool_size)
             # define loss functions
-            self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
+            self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, gan=opt.gan).to(self.device)
             self.criterionL1 = torch.nn.L1Loss()
 
             # initialize optimizers
@@ -97,11 +98,18 @@ class StnGanModel(BaseModel):
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
+        one = torch.FloatTensor([1])
+        mone = one * -1
+        self.one = one.to(self.device)
+        self.mone = mone.to(self.device)
+        self.gan = opt.gan
+
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
         real_B = input['B' if AtoB else 'A']
-        real_C = input['C']
+        #real_C = input['C']
+        real_C = input['A']
 
         input_label = torch.nn.functional.softmax(real_C, dim=1)
         self.real_C = input_label.to(self.device)
@@ -141,8 +149,18 @@ class StnGanModel(BaseModel):
 
         theta_m = np.mat(tmp_theta)
         self.theta_i = np.asarray(theta_m.I)
+        self.theta_i = self.theta_i[:2][:]
+        self.theta_i = self.theta_i[np.newaxis, :]
+        self.theta_i = self.theta_i.repeat(self.real_A.size(0), axis=0)
+        self.theta_i = torch.from_numpy(self.theta_i)
+        self.theta_i = self.theta_i.view(-1, 2, 3)
 
-        self.torch_theta = torch.from_numpy(tmp_theta[:2][:])
+        tmp_theta = tmp_theta[:2][:]
+        tmp_theta = tmp_theta[np.newaxis, :]
+        tmp_theta = tmp_theta.repeat(self.real_A.size(0), axis=0)
+        self.torch_theta = torch.from_numpy(tmp_theta)
+
+        #self.torch_theta = torch.from_numpy(tmp_theta[:2][:])
         self.torch_theta = self.torch_theta.view(-1, 2, 3)
         grid = F.affine_grid(self.torch_theta, self.real_A.size())
         grid = grid.float()
@@ -256,6 +274,26 @@ class StnGanModel(BaseModel):
         recovered_B_color = recovered_B_color[np.newaxis, :]
         self.recovered_B_color = torch.from_numpy(recovered_B_color).to(self.device)
 
+    def calc_gradient_penalty(self):
+        # print real_data.size()
+        LAMBDA = 10  # Gradient penalty lambda hyperparameter
+        BATCH_SIZE = self.transformed_A.size(0)
+        alpha = torch.rand(BATCH_SIZE, 1)
+        alpha = alpha.expand(self.transformed_A.size())
+        alpha = alpha.to(self.device)
+
+        interpolates = alpha * self.transformed_A + ((1 - alpha) * self.recovered_A)
+        interpolates = interpolates.to(self.device)
+
+        disc_interpolates = self.netD(interpolates)
+
+        gradients = torch.nn.autograd.grad(outputs=disc_interpolates, inputs=interpolates,
+                                  grad_outputs=torch.ones(disc_interpolates.size()).to(self.device),
+                                  create_graph=True, retain_graph=True, only_inputs=True)[0]
+
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+        return gradient_penalty
+
     def backward_D(self):
         # Fake
         # stop backprop to the generator by detaching fake_B
@@ -264,19 +302,36 @@ class StnGanModel(BaseModel):
         fake_B = self.fake_B_pool.query(self.recovered_A)
         #pred_fake = self.netD(fake_AB.detach())
         pred_fake = self.netD(fake_B.detach())
-        self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
         # Real
         #real_AB = torch.cat((self.real_A, self.real_B), 1)
         real_B = self.real_C
         #pred_real = self.netD(real_AB)
         pred_real = self.netD(real_B)
-        self.loss_D_real = self.criterionGAN(pred_real, True)
+        if self.gan == 'vanilla' or self.gan == 'lsgan' or self.gan == 'sngan':
+            self.loss_D_fake = self.criterionGAN(pred_fake, False)
+            self.loss_D_real = self.criterionGAN(pred_real, True)
+            # Combined loss
+            self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+            self.loss_D.backward()
+        elif self.gan == 'wgan' or self.gan == 'wgangp':
+            pred_fake.backward(self.mone)
+            pred_real.backward(self.one)
+            self.loss_D_real = pred_real
+            self.loss_D_fake = - pred_fake
+            if self.gan == 'wgangp':
+                # train with gradient penalty
+                gradient_penalty = self.calc_gradient_penalty()
+                gradient_penalty.backward()
+        else:
+            raise NotImplementedError('GANLoss name [%s] is not recognized' % self.gan)
 
-        # Combined loss
-        self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
 
-        self.loss_D.backward()
+
+
+
+
+
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
@@ -289,7 +344,7 @@ class StnGanModel(BaseModel):
         # Second, G(A) = B
         self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A)
 
-        self.loss_STN_L1 = self.criterionL1(self.predicted_theta, torch.from_numpy(self.theta_i[:2][:]).view(-1,2,3).float().to(self.device))
+        self.loss_STN_L1 = self.criterionL1(self.predicted_theta, self.theta_i.float().to(self.device))
 
         #self.loss_G = self.loss_G_L1 * self.opt.lambda_L1 + self.loss_STN_L1
         self.loss_G = self.loss_G_L1 * 0.0 + self.loss_STN_L1 * 0.0 + self.loss_G_GAN * 1.0
@@ -301,6 +356,13 @@ class StnGanModel(BaseModel):
     def optimize_parameters(self):
         self.forward()
         # update D
+        # clamp parameters to a cube
+        if self.gan == 'wgan':
+            clamp_lower = -0.01
+            clamp_upper = 0.01
+            for p in self.netD.parameters():
+                p.data.clamp_(clamp_lower, clamp_upper)
+
         self.set_requires_grad(self.netD, True)
         self.optimizer_D.zero_grad()
         self.backward_D()

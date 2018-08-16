@@ -8,6 +8,7 @@ from tps_grid_gen import TPSGridGen
 import numpy as np
 import torch.nn.functional as F
 from grid_sample import grid_sample
+from src.snlayers.snconv2d import SNConv2d
 
 ###############################################################################
 # Helper Functions
@@ -80,36 +81,36 @@ def init_net(net, init_type='normal', gpu_ids=[]):
             net.fc2.weight.data.zero_()
     return net
 
-def define_G(input_nc, output_nc, ngf, which_model_netG, image_width, image_height, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, which_model_netG, image_width, image_height, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[], gan='vanilla'):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
     if which_model_netG == 'resnet_9blocks':
-        netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
+        netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gan=gan)
     elif which_model_netG == 'resnet_6blocks':
-        netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6)
+        netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, gan=gan)
     elif which_model_netG == 'unet_128':
-        netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gan=gan)
     elif which_model_netG == 'unet_256':
-        netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gan=gan)
     elif which_model_netG == 'unbounded_stn':
-        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4, gan=gan)
     elif which_model_netG == 'bounded_stn':
-        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4, gan=gan)
     elif which_model_netG == 'affine_stn':
-        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4)
+        netG = StnGenerator(input_nc, output_nc, which_model_netG, image_width, image_height, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4, gan=gan)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     return init_net(netG, init_type, gpu_ids)
 
 
 def define_D(input_nc, ndf, which_model_netD,
-             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
+             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[], gan='vanilla'):
     netD = None
     norm_layer = get_norm_layer(norm_type=norm)
 
     if which_model_netD == "pretrained":
-        netD = FCDiscriminator(input_nc, ndf, use_sigmoid=use_sigmoid)
+        netD = FCDiscriminator(input_nc, ndf, use_sigmoid=use_sigmoid, gan=gan)
         if len(gpu_ids) > 0:
             assert (torch.cuda.is_available())
             netD.to(gpu_ids[0])
@@ -120,11 +121,11 @@ def define_D(input_nc, ndf, which_model_netD,
 
 
     elif which_model_netD == 'basic':
-        netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+        netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gan=gan)
     elif which_model_netD == 'n_layers':
-        netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+        netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gan=gan)
     elif which_model_netD == 'pixel':
-        netD = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+        netD = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gan=gan)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   which_model_netD)
@@ -143,7 +144,7 @@ def print_grad(grad):
     np.save('grid_grad.npy', grad.data.cpu().numpy())
 
 class StnGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, which_model_netG, image_width, image_height, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, which_model_netG, image_width, image_height, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect', gan='vanilla'):
         assert(n_blocks >= 0)
         super(StnGenerator, self).__init__()
         self.input_nc = input_nc
@@ -236,7 +237,8 @@ class StnGenerator(nn.Module):
     def forward(self, input):
         batch_size = input.size(0)
         x = self.model(input)
-        x = x.view(-1)
+        #x = x.view(-1)
+        x = x.view(batch_size, -1)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
@@ -273,14 +275,16 @@ class StnGenerator(nn.Module):
 # but it abstracts away the need to create the target label tensor
 # that has the same size as the input
 class GANLoss(nn.Module):
-    def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0):
+    def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0, gan='vanilla'):
         super(GANLoss, self).__init__()
         self.register_buffer('real_label', torch.tensor(target_real_label))
         self.register_buffer('fake_label', torch.tensor(target_fake_label))
-        if use_lsgan:
+        if gan == 'vanilla' or gan == 'sngan':
+            self.loss = nn.BCELoss()
+        elif gan == 'lsgan':
             self.loss = nn.MSELoss()
         else:
-            self.loss = nn.BCELoss()
+            raise NotImplementedError('GANLoss name [%s] is not recognized' % gan)
             #self.loss = nn.BCEWithLogitsLoss()
 
     def get_target_tensor(self, input, target_is_real):
@@ -311,7 +315,7 @@ class GANLoss(nn.Module):
 # Code and idea originally from Justin Johnson's architecture.
 # https://github.com/jcjohnson/fast-neural-style/
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', gan='vanilla'):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -407,7 +411,7 @@ class ResnetBlock(nn.Module):
 # at the bottleneck
 class UnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64,
-                 norm_layer=nn.BatchNorm2d, use_dropout=False):
+                 norm_layer=nn.BatchNorm2d, use_dropout=False, gan='vanilla'):
         super(UnetGenerator, self).__init__()
 
         # construct unet structure
@@ -483,7 +487,7 @@ class UnetSkipConnectionBlock(nn.Module):
 
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gan='vanilla'):
         super(NLayerDiscriminator, self).__init__()
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -492,35 +496,59 @@ class NLayerDiscriminator(nn.Module):
 
         kw = 4
         padw = 1
-        sequence = [
-            nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
-            nn.LeakyReLU(0.2, True)
-        ]
+        if gan == 'sngan':
+            sequence = [
+                SNConv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
+                nn.LeakyReLU(0.2, True)
+            ]
+        else:
+            sequence = [
+                nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
+                nn.LeakyReLU(0.2, True)
+            ]
 
         nf_mult = 1
         nf_mult_prev = 1
         for n in range(1, n_layers):
             nf_mult_prev = nf_mult
             nf_mult = min(2**n, 8)
+            if gan == 'sngan':
+                sequence += [
+                    SNConv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                              kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                    norm_layer(ndf * nf_mult),
+                    nn.LeakyReLU(0.2, True)
+                ]
+            else:
+                sequence += [
+                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                              kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                    norm_layer(ndf * nf_mult),
+                    nn.LeakyReLU(0.2, True)
+                ]
+
+        nf_mult_prev = nf_mult
+        nf_mult = min(2**n_layers, 8)
+        if gan == 'sngan':
             sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
-                          kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                SNConv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=1, padding=padw, bias=use_bias),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True)
             ]
 
-        nf_mult_prev = nf_mult
-        nf_mult = min(2**n_layers, 8)
-        sequence += [
-            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
-                      kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-            norm_layer(ndf * nf_mult),
-            nn.LeakyReLU(0.2, True)
-        ]
+            sequence += [SNConv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+        else:
+            sequence += [
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+                norm_layer(ndf * nf_mult),
+                nn.LeakyReLU(0.2, True)
+            ]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+            sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
 
-        if use_sigmoid:
+        if gan == 'vanilla' or gan == 'sngan':
             sequence += [nn.Sigmoid()]
 
         self.model = nn.Sequential(*sequence)
@@ -530,7 +558,7 @@ class NLayerDiscriminator(nn.Module):
 
 
 class FCDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=32, use_sigmoid=False):
+    def __init__(self, input_nc, ndf=32, use_sigmoid=False, gan='vanilla'):
         super(FCDiscriminator, self).__init__()
 
         self.conv1 = nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1)
@@ -540,6 +568,7 @@ class FCDiscriminator(nn.Module):
         self.classifier = nn.Conv2d(ndf*8, 1, kernel_size=4, stride=2, padding=1)
         self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
         self.sigmoid = nn.Sigmoid()
+        self.gan = gan
 
     def forward(self, x):
         x = self.conv1(x)
@@ -551,13 +580,15 @@ class FCDiscriminator(nn.Module):
         x = self.conv4(x)
         x = self.leaky_relu(x)
         x = self.classifier(x)
-        return self.sigmoid(x)
+        if self.gan == 'vanilla':
+            x = self.sigmoid(x)
+        return x
         #return x
 		#x = self.up_sample(x)
 		#x = self.sigmoid(x)
 
 class PixelDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
+    def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gan='vanilla'):
         super(PixelDiscriminator, self).__init__()
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -572,7 +603,7 @@ class PixelDiscriminator(nn.Module):
             nn.LeakyReLU(0.2, True),
             nn.Conv2d(ndf * 2, 1, kernel_size=1, stride=1, padding=0, bias=use_bias)]
 
-        if use_sigmoid:
+        if gan == 'vanilla':
             self.net.append(nn.Sigmoid())
 
         self.net = nn.Sequential(*self.net)

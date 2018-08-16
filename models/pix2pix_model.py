@@ -37,7 +37,9 @@ class Pix2PixModel(BaseModel):
             self.model_names = ['G']
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
-                                      opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+                                      opt.which_model_netG, opt.fineSize, opt.fineSize, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+                                      #opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
