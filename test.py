@@ -21,15 +21,20 @@ if __name__ == '__main__':
     web_dir = os.path.join(opt.results_dir, opt.name, '%s_%s' % (opt.phase, opt.which_epoch))
     webpage = html.HTML(web_dir, 'Experiment = %s, Phase = %s, Epoch = %s' % (opt.name, opt.phase, opt.which_epoch))
     # test
+    loss = 0
     for i, data in enumerate(dataset):
         if i >= opt.how_many:
             break
-        model.set_input(data)
-        model.test()
-        visuals = model.get_current_visuals()
-        img_path = model.get_image_paths()
-        if i % 5 == 0:
-            print('processing (%04d)-th image... %s' % (i, img_path))
-        save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
+        if opt.model == 'stn_prediction' and opt.phase == 'test':
+            loss = loss + model.test(opt, data)
+        else:
+            model.set_input(data)
+            model.test()
+            visuals = model.get_current_visuals()
+            img_path = model.get_image_paths()
+            if i % 5 == 0:
+                print('processing (%04d)-th image... %s' % (i, img_path))
+            save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
 
     webpage.save()
+    print("loss: %s" % loss)

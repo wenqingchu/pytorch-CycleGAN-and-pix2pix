@@ -97,6 +97,24 @@ class StnPredictionModel(BaseModel):
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
+
+    # used in test time, wrapping `forward` in no_grad() so we don't save
+    # intermediate steps for backprop
+    def test(self, opt, input):
+        real_A = input['A']
+        label = input['label']
+        input_label = torch.nn.functional.softmax(real_A, dim=1)
+        self.real_A = input_label.to(self.device)
+        if opt.which_model_netG == 'affine_stn':
+            with torch.no_grad():
+                self.recovered_A, self.predicted_theta = self.netG(self.real_A)
+            #self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A)
+            self.loss_STN_L1 = self.criterionL1(self.predicted_theta, label.to(self.device))
+            return self.loss_STN_L1.data
+
+        else:
+            raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)
+
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']

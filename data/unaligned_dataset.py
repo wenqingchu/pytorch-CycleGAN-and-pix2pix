@@ -14,7 +14,7 @@ class UnalignedDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
         self.root = opt.dataroot
-        if self.root == './datasets/semanticlabels':
+        if self.model == 'pix2pix_stn':
             A_paths = []
             A_dir = os.path.join(self.root, 'cityscapes_prediction/gtFine')
             A_list_path = 'semanticlabels_list/' + opt.phase + 'A.txt'
@@ -22,7 +22,6 @@ class UnalignedDataset(BaseDataset):
             for name in A_img_ids:
                 A_img_file = os.path.join(A_dir, "%s/%s" % (opt.phase, name[:-3] + "npy"))
                 A_paths.append(A_img_file)
-            self.A_paths = A_paths
             B_paths = []
             B_dir = os.path.join(self.root, 'GTA5_prediction/labels')
             B_list_path = 'semanticlabels_list/' + opt.phase + 'B.txt'
@@ -30,11 +29,12 @@ class UnalignedDataset(BaseDataset):
             for name in B_img_ids:
                 B_img_file = os.path.join(B_dir, "%s" % (name[:-3]+"npy"))
                 B_paths.append(B_img_file)
-            self.B_paths = B_paths
+            self.B_paths = A_paths
+            self.A_paths = B_paths
         elif opt.model == 'stn_prediction':
             A_paths = []
             A_dir = os.path.join(self.root, 'GTA5_prediction/labels')
-            A_list_path = 'semanticlabels_list/trainB.txt'
+            A_list_path = 'semanticlabels_list/' + opt.phase +'B.txt'
             A_img_ids = [i_id.strip() for i_id in open(A_list_path)]
             for name in A_img_ids:
                 A_img_file = os.path.join(A_dir, "%s" % (name[:-3] + "npy"))
@@ -48,6 +48,15 @@ class UnalignedDataset(BaseDataset):
                 B_img_file = os.path.join(B_dir, "%s" % (name[:-3] + "npy"))
                 B_paths.append(B_img_file)
             self.B_paths = B_paths
+            if opt.phase == 'test':
+                label_paths = []
+                label_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+                label_list_path = 'semanticlabels_list/' + opt.phase + 'B.txt'
+                label_img_ids = [i_id.strip() for i_id in open(label_list_path)]
+                for name in label_img_ids:
+                    label_img_file = os.path.join(label_dir, "%s" % (name[:-4] + "_label.npy"))
+                    label_paths.append(label_img_file)
+                self.label_paths = label_paths
         elif opt.model == 'stn_gan':
             A_paths = []
             A_dir = os.path.join(self.root, 'GTA5_prediction/labels')
@@ -134,8 +143,14 @@ class UnalignedDataset(BaseDataset):
             A_label_copy = A_label
             B_label_copy = B_label
             if self.opt.model != "stn_gan":
-                return {'A': A_label_copy, 'B': B_label_copy,
-                    'A_paths': A_path, 'B_paths': B_path}
+                if self.opt.phase == 'test':
+                    label_path = self.label_paths[index % self.A_size]
+                    label = np.load(label_path)
+                    return {'A': A_label_copy, 'B': B_label_copy, 'label': label,
+                            'A_paths': A_path, 'B_paths': B_path, 'label_path': label_path}
+                else:
+                    return {'A': A_label_copy, 'B': B_label_copy,
+                            'A_paths': A_path, 'B_paths': B_path}
             else:
                 C_label = np.load(C_path)
                 C_label = cv2.resize(C_label, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
