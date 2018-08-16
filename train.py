@@ -56,8 +56,8 @@ if __name__ == '__main__':
         if epoch % opt.save_epoch_freq == 0:
             print('saving the model at the end of epoch %d, iters %d' %
                   (epoch, total_steps))
-            #model.save_networks('latest')
-            #model.save_networks(epoch)
+            model.save_networks('latest')
+            model.save_networks(epoch)
 
         print('End of epoch %d / %d \t Time Taken: %d sec' %
               (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))

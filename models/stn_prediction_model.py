@@ -122,14 +122,23 @@ class StnPredictionModel(BaseModel):
         for i in range(2):
             for j in range(3):
                 tmp = random.random()-1
-                tmp_theta[i][j] = self.theta[i][j] + tmp*0.5
+                tmp_theta[i][j] = self.theta[i][j] + tmp*0.4
         tmp_theta[2][2] = 1
 
         theta_m = np.mat(tmp_theta)
         self.theta_i = np.asarray(theta_m.I)
+        self.theta_i = self.theta_i[:2][:]
+        self.theta_i = self.theta_i[np.newaxis, :]
+        self.theta_i = self.theta_i.repeat(self.real_A.size(0), axis=0)
+        self.theta_i = torch.from_numpy(self.theta_i)
+        self.theta_i = self.theta_i.view(-1, 2, 3)
 
-        self.torch_theta = torch.from_numpy(tmp_theta[:2][:])
+        tmp_theta = tmp_theta[:2][:]
+        tmp_theta = tmp_theta[np.newaxis, :]
+        tmp_theta = tmp_theta.repeat(self.real_A.size(0), axis=0)
+        self.torch_theta = torch.from_numpy(tmp_theta)
         self.torch_theta = self.torch_theta.view(-1, 2, 3)
+
         grid = F.affine_grid(self.torch_theta, self.real_A.size())
         grid = grid.float()
         self.transformed_A = F.grid_sample(self.real_A, grid.to(self.device), padding_mode='border')
@@ -273,7 +282,7 @@ class StnPredictionModel(BaseModel):
         # Second, G(A) = B
         self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A)
 
-        self.loss_STN_L1 = self.criterionL1(self.predicted_theta, torch.from_numpy(self.theta_i[:2][:]).view(-1,2,3).float().to(self.device))
+        self.loss_STN_L1 = self.criterionL1(self.predicted_theta, self.theta_i.float().to(self.device))
 
         #self.loss_G = self.loss_G_L1 * self.opt.lambda_L1 + self.loss_STN_L1
         self.loss_G = self.loss_G_L1 * 1.0 + self.loss_STN_L1 * 0.0

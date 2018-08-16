@@ -144,7 +144,7 @@ class StnGanModel(BaseModel):
         for i in range(2):
             for j in range(3):
                 tmp = random.random()-1
-                tmp_theta[i][j] = self.theta[i][j] + tmp*0.5
+                tmp_theta[i][j] = self.theta[i][j] + tmp*0.4
         tmp_theta[2][2] = 1
 
         theta_m = np.mat(tmp_theta)
