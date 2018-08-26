@@ -29,6 +29,14 @@ class UnalignedDataset(BaseDataset):
             for name in B_img_ids:
                 B_img_file = os.path.join(B_dir, "%s" % (name[:-3]+"npy"))
                 B_paths.append(B_img_file)
+            C_paths = []
+            C_dir = os.path.join(self.root, 'GTA5_prediction/labels')
+            C_list_path = 'semanticlabels_list/valB.txt'
+            C_img_ids = [i_id.strip() for i_id in open(C_list_path)]
+            for name in C_img_ids:
+                C_img_file = os.path.join(C_dir, "%s" % (name[:-3] + "npy"))
+                C_paths.append(C_img_file)
+            self.C_paths = C_paths
             #self.B_paths = B_paths
             #self.A_paths = A_paths
             self.B_paths = A_paths
@@ -110,6 +118,7 @@ class UnalignedDataset(BaseDataset):
 
         # print('(A, B) = (%d, %d)' % (index_A, index_B))
         if self.root == './datasets/semanticlabels':
+            # stn_gan, stn_prediction, pix2pix_stn
             # A is cityscapes, B is GTA5
             label2train = [[0, 255], [1, 255], [2, 255], [3, 255], [4, 255], [5, 255], [6, 255], [7, 0], [8, 1],
                            [9, 255], [10, 255], [11, 2], [12, 3],
@@ -144,7 +153,16 @@ class UnalignedDataset(BaseDataset):
             #B_label_copy[B_label_copy == 255] = 19
             A_label_copy = A_label
             B_label_copy = B_label
-            if self.opt.model != "stn_gan":
+            if self.opt.model == "pix2pix_stn":
+                C_label = np.load(C_path)
+                C_label = cv2.resize(C_label, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
+                C_label = np.asarray(C_label, np.float32)
+                C_label = np.transpose(C_label, (2, 0, 1))
+                C_label_copy = C_label
+                return {'A': A_label_copy, 'B': B_label_copy, 'C': C_label_copy,
+                        'A_paths': A_path, 'B_paths': B_path, 'C_paths': C_path}
+
+            elif self.opt.model == "stn_prediction":
                 if self.opt.phase == 'test':
                     label_path = self.label_paths[index % self.A_size]
                     label = np.load(label_path)

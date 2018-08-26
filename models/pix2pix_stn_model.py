@@ -55,7 +55,7 @@ class Pix2PixStnModel(BaseModel):
         if opt.which_model_netG =='unbounded_stn' or opt.which_model_netG == 'bounded_stn':
             self.visual_names = ['real_A_color', 'real_A_color_grid', 'fake_B_color', 'real_B_color']
         else:
-            self.visual_names = ['real_A_color', 'fake_B_color', 'real_B_color']
+            self.visual_names = ['real_A_color', 'fake_B_color', 'real_B_color', 'real_C_color', 'fake_C_color']
             # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G', 'D']
@@ -63,13 +63,13 @@ class Pix2PixStnModel(BaseModel):
             self.model_names = ['G']
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
-                                      opt.which_model_netG, opt.fineSize, opt.fineSize, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+                                      opt.which_model_netG, opt.fineSize, opt.fineSize, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids, opt.gan)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
             self.netD = networks.define_D(opt.output_nc, opt.ndf,
                                           opt.which_model_netD,
-                                          opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
+                                          opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids, opt.gan)
             #self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf,
             #                              opt.which_model_netD,
             #                              opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
@@ -78,28 +78,44 @@ class Pix2PixStnModel(BaseModel):
             #self.fake_AB_pool = ImagePool(opt.pool_size)
             self.fake_B_pool = ImagePool(opt.pool_size)
             # define loss functions
-            self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
+            self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, gan=opt.gan).to(self.device)
             self.criterionL1 = torch.nn.L1Loss()
 
             # initialize optimizers
             self.optimizers = []
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(),
-                                                lr=opt.lr*0.01, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.02, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(),
-                                                lr=opt.lr*0.00, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.02, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+
+        one = torch.FloatTensor([1])
+        mone = one * -1
+        self.one = one.to(self.device)
+        self.mone = mone.to(self.device)
+        self.gan = opt.gan
 
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
         real_B = input['B' if AtoB else 'A']
-        print(input['A_paths'])
-        #size = real_A.size()
-        #oneHot_size = (size[0], self.input_nc, size[2], size[3])
-        #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
-        #input_label = input_label.scatter_(1, real_A.long(), 1.0)
-        #print(input_label.size())
+        real_C = input['C']
+
+        input_label = torch.nn.functional.softmax(real_C, dim=1)
+        self.real_C = input_label.to(self.device)
+        real_C_color = input_label[0].numpy()
+        real_C_color = real_C_color.transpose(1, 2, 0)
+        real_C_color = np.asarray(np.argmax(real_C_color, axis=2), dtype=np.uint8)
+        real_C_color_numpy = np.zeros((real_C_color.shape[0], real_C_color.shape[1], 3))
+        for i in range(20):
+            real_C_color_numpy[real_C_color == i] = self.palette[i]
+        real_C_color = real_C_color_numpy.astype(np.uint8)
+        real_C_color = real_C_color.transpose(2, 0, 1)
+        real_C_color = real_C_color[np.newaxis, :]
+        self.real_C_color = torch.from_numpy(real_C_color).to(self.device)
+
+
         input_label = torch.nn.functional.softmax(real_A, dim=1)
         self.real_A = input_label.to(self.device)
         # visualize the real_A
@@ -114,11 +130,7 @@ class Pix2PixStnModel(BaseModel):
         real_A_color = real_A_color[np.newaxis, :]
         self.real_A_color = torch.from_numpy(real_A_color).to(self.device)
 
-        #size = real_B.size()
-        #oneHot_size = (size[0], self.output_nc, size[2], size[3])
-        #input_label = torch.FloatTensor(torch.Size(oneHot_size)).zero_()
-        #input_label = input_label.scatter_(1, real_B.long(), 1.0)
-        #print(input_label.size())
+
         input_label = torch.nn.functional.softmax(real_B, dim=1)
         self.real_B = input_label.to(self.device)
         # visualize the real_B
@@ -127,15 +139,12 @@ class Pix2PixStnModel(BaseModel):
         real_B_color = np.asarray(np.argmax(real_B_color, axis=2), dtype=np.uint8)
         real_B_color_numpy = np.zeros((real_B_color.shape[0], real_B_color.shape[1],3))
         for i in range(20):
-            #print(sum(sum(real_B_color==i)))
             real_B_color_numpy[real_B_color==i] = self.palette[i]
         real_B_color = real_B_color_numpy.astype(np.uint8)
-        #print(sum(sum(real_B_color==10)))
         real_B_color = real_B_color.transpose(2, 0, 1)
         real_B_color = real_B_color[np.newaxis, :]
         self.real_B_color = torch.from_numpy(real_B_color).to(self.device)
-        #self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        #self.real_B = input['B' if AtoB else 'A'].to(self.device)
+
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -172,7 +181,8 @@ class Pix2PixStnModel(BaseModel):
             self.real_A_color_grid = torch.from_numpy(real_A_color_grid).to(self.device)
 
         elif self.which_model_netG == 'affine_stn':
-            self.fake_B, theta = self.netG(self.real_A)
+            self.fake_B, theta_a = self.netG(self.real_A)
+            self.fake_C, theta_c = self.netG(self.real_C)
         else:
             self.fake_B= self.netG(self.real_A)
         # visualize the fake_B
@@ -187,6 +197,18 @@ class Pix2PixStnModel(BaseModel):
         fake_B_color = fake_B_color[np.newaxis, :]
         self.fake_B_color = torch.from_numpy(fake_B_color).to(self.device)
 
+        # visualize the fake_C
+        fake_C_color = self.fake_C.data[0].cpu().float().numpy()
+        fake_C_color = fake_C_color.transpose(1,2,0)
+        fake_C_color = np.asarray(np.argmax(fake_C_color, axis=2), dtype=np.uint8)
+        fake_C_color_numpy = np.zeros((fake_C_color.shape[0], fake_C_color.shape[1],3))
+        for i in range(20):
+            fake_C_color_numpy[fake_C_color==i] = self.palette[i]
+        fake_C_color = fake_C_color_numpy.astype(np.uint8)
+        fake_C_color = fake_C_color.transpose(2, 0, 1)
+        fake_C_color = fake_C_color[np.newaxis, :]
+        self.fake_C_color = torch.from_numpy(fake_C_color).to(self.device)
+
 
     def backward_D(self):
         # Fake
@@ -195,19 +217,43 @@ class Pix2PixStnModel(BaseModel):
         fake_B = self.fake_B_pool.query(self.fake_B)
         #pred_fake = self.netD(fake_AB.detach())
         pred_fake = self.netD(fake_B.detach())
-        self.loss_D_fake = self.criterionGAN(pred_fake, False)
+        #self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
         # Real
         #real_AB = torch.cat((self.real_A, self.real_B), 1)
         real_B = self.real_B
         #pred_real = self.netD(real_AB)
         pred_real = self.netD(real_B)
-        self.loss_D_real = self.criterionGAN(pred_real, True)
+        if self.gan == 'vanilla' or self.gan == 'lsgan' or self.gan == 'sngan':
+            self.loss_D_fake = self.criterionGAN(pred_fake, False)
+            self.loss_D_real = self.criterionGAN(pred_real, True)
+            # Combined loss
+            self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+            self.loss_D.backward()
+        elif self.gan == 'wgan' or self.gan == 'wgangp':
+            tmp_pred_fake = pred_fake.mean()
+            tmp_pred_real = pred_real.mean()
+            #print(tmp_pred_fake.size())
+            #print(tmp_pred_fake.data)
+            #print(self.mone.size())
+            tmp_pred_fake.backward(self.mone)
+            tmp_pred_real.backward(self.one)
+            self.loss_D_real = tmp_pred_real
+            self.loss_D_fake = - tmp_pred_fake
+            if self.gan == 'wgangp':
+                # train with gradient penalty
+                gradient_penalty = self.calc_gradient_penalty()
+                gradient_penalty.backward()
+        else:
+            raise NotImplementedError('GANLoss name [%s] is not recognized' % self.gan)
+
+
+        #self.loss_D_real = self.criterionGAN(pred_real, True)
 
         # Combined loss
-        self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+        #self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
 
-        self.loss_D.backward()
+        #self.loss_D.backward()
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
@@ -215,20 +261,41 @@ class Pix2PixStnModel(BaseModel):
         fake_B = self.fake_B
         #pred_fake = self.netD(fake_AB)
         pred_fake = self.netD(fake_B)
-        self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+        self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_A)
+        #self.loss_STN_L1 = self.criterionL1(self.predicted_theta, self.theta_i.float().to(self.device))
+        if self.gan == 'vanilla' or self.gan == 'lsgan' or self.gan == 'sngan':
+            self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+            self.loss_G = self.loss_G_L1 * 0.0 + self.loss_G_GAN * 1.0
+            self.loss_G.backward()
+        elif self.gan == 'wgan' or self.gan == 'wgangp':
+            tmp_pred_fake = pred_fake.mean()
+            tmp_pred_fake.backward(self.one)
+            self.loss_G_GAN = tmp_pred_fake
+
+
+
+
+        #self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_A) * self.opt.lambda_L1
+        #self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_A) * self.opt.lambda_L1
 
-        self.loss_G = self.loss_G_GAN + self.loss_G_L1
+        #self.loss_G = self.loss_G_GAN + self.loss_G_L1
 
         #self.loss_G = self.loss_G_GAN
 
-        self.loss_G.backward()
+        #self.loss_G.backward()
 
     def optimize_parameters(self):
         self.forward()
         # update D
+        # clamp parameters to a cube
+        if self.gan == 'wgan':
+            clamp_lower = -0.01
+            clamp_upper = 0.01
+            for p in self.netD.parameters():
+                p.data.clamp_(clamp_lower, clamp_upper)
+
         self.set_requires_grad(self.netD, True)
         self.optimizer_D.zero_grad()
         self.backward_D()
