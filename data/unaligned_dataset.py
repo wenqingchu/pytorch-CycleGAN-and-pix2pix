@@ -14,7 +14,7 @@ class UnalignedDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
         self.root = opt.dataroot
-        if self.model == 'pix2pix_stn':
+        if opt.model == 'pix2pix_stn':
             A_paths = []
             A_dir = os.path.join(self.root, 'cityscapes_prediction/gtFine')
             A_list_path = 'semanticlabels_list/' + opt.phase + 'A.txt'
@@ -29,6 +29,8 @@ class UnalignedDataset(BaseDataset):
             for name in B_img_ids:
                 B_img_file = os.path.join(B_dir, "%s" % (name[:-3]+"npy"))
                 B_paths.append(B_img_file)
+            #self.B_paths = B_paths
+            #self.A_paths = A_paths
             self.B_paths = A_paths
             self.A_paths = B_paths
         elif opt.model == 'stn_prediction':

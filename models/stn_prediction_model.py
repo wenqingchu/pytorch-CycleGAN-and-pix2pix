@@ -81,12 +81,13 @@ class StnPredictionModel(BaseModel):
             #                              opt.which_model_netD,
             #                              opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
 
+        self.criterionL1 = torch.nn.L1Loss()
         if self.isTrain:
             #self.fake_AB_pool = ImagePool(opt.pool_size)
             self.fake_B_pool = ImagePool(opt.pool_size)
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
-            self.criterionL1 = torch.nn.L1Loss()
+            #self.criterionL1 = torch.nn.L1Loss()
 
             # initialize optimizers
             self.optimizers = []
@@ -109,7 +110,7 @@ class StnPredictionModel(BaseModel):
             with torch.no_grad():
                 self.recovered_A, self.predicted_theta = self.netG(self.real_A)
             #self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A)
-            self.loss_STN_L1 = self.criterionL1(self.predicted_theta, label.to(self.device))
+            self.loss_STN_L1 = self.criterionL1(self.predicted_theta, label.float().to(self.device))
             return self.loss_STN_L1.data
 
         else:

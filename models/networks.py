@@ -16,6 +16,7 @@ from src.snlayers.snconv2d import SNConv2d
 
 
 def get_norm_layer(norm_type='instance'):
+    print(norm_type)
     if norm_type == 'batch':
         norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
     elif norm_type == 'instance':
@@ -177,7 +178,12 @@ class StnGenerator(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        model = [nn.ReflectionPad2d(3),
+        if norm_layer == None:
+            model = [nn.ReflectionPad2d(3),
+                    nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,bias=use_bias),
+                    nn.ReLU(True)]
+        else:
+            model = [nn.ReflectionPad2d(3),
                  nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
                            bias=use_bias),
                  norm_layer(ngf),
@@ -187,10 +193,14 @@ class StnGenerator(nn.Module):
         n_downsampling = 3
         for i in range(n_downsampling):
             mult = 2**i
-            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,
+            if norm_layer == None:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,stride=2, padding=1, bias=use_bias),
+                        nn.ReLU(True)]
+            else:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,
                                 stride=2, padding=1, bias=use_bias),
-                      norm_layer(ngf * mult * 2),
-                      nn.ReLU(True)]
+                                norm_layer(ngf * mult * 2),
+                                nn.ReLU(True)]
 
         mult = 2**n_downsampling
         for i in range(n_blocks):
@@ -283,6 +293,9 @@ class GANLoss(nn.Module):
             self.loss = nn.BCELoss()
         elif gan == 'lsgan':
             self.loss = nn.MSELoss()
+        elif gan == 'wgan' or gan == 'wgangp':
+            # not use
+            self.loss = nn.MSELoss()
         else:
             raise NotImplementedError('GANLoss name [%s] is not recognized' % gan)
             #self.loss = nn.BCEWithLogitsLoss()
@@ -326,19 +339,28 @@ class ResnetGenerator(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+        if norm_layer == None:
+            model = [nn.ReflectionPad2d(3),
+                    nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
                            bias=use_bias),
-                 norm_layer(ngf),
-                 nn.ReLU(True)]
+                    nn.ReLU(True)]
+        else:
+            model = [nn.ReflectionPad2d(3),
+                    nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                           bias=use_bias),
+                    norm_layer(ngf),
+                    nn.ReLU(True)]
 
         n_downsampling = 2
         for i in range(n_downsampling):
             mult = 2**i
-            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,
-                                stride=2, padding=1, bias=use_bias),
-                      norm_layer(ngf * mult * 2),
-                      nn.ReLU(True)]
+            if norm_layer == None:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,stride=2, padding=1, bias=use_bias),
+                        nn.ReLU(True)]
+            else:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,stride=2, padding=1, bias=use_bias),
+                        norm_layer(ngf * mult * 2),
+                        nn.ReLU(True)]
 
         mult = 2**n_downsampling
         for i in range(n_blocks):
@@ -346,7 +368,14 @@ class ResnetGenerator(nn.Module):
 
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
-            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+            if norm_layer == None:
+                model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=use_bias),
+                                         nn.ReLU(True)]
+            else:
+                model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
                                          kernel_size=3, stride=2,
                                          padding=1, output_padding=1,
                                          bias=use_bias),
@@ -380,7 +409,11 @@ class ResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
 
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
+        if norm_layer == None:
+            conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
+                    nn.ReLU(True)]
+        else:
+            conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
                        norm_layer(dim),
                        nn.ReLU(True)]
         if use_dropout:
@@ -395,8 +428,11 @@ class ResnetBlock(nn.Module):
             p = 1
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
-                       norm_layer(dim)]
+        if norm_layer == None:
+            conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias)]
+        else:
+            conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
+                    norm_layer(dim)]
 
         return nn.Sequential(*conv_block)
 
@@ -512,11 +548,23 @@ class NLayerDiscriminator(nn.Module):
         for n in range(1, n_layers):
             nf_mult_prev = nf_mult
             nf_mult = min(2**n, 8)
-            if gan == 'sngan':
+            if gan == 'sngan' and norm_layer == None:
+                sequence += [
+                    SNConv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                              kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                    nn.LeakyReLU(0.2, True)
+                ]
+            elif gan == 'sngan' and norm_layer != None:
                 sequence += [
                     SNConv2d(ndf * nf_mult_prev, ndf * nf_mult,
                               kernel_size=kw, stride=2, padding=padw, bias=use_bias),
                     norm_layer(ndf * nf_mult),
+                    nn.LeakyReLU(0.2, True)
+                ]
+            elif gan != 'sngan' and norm_layer == None:
+                sequence += [
+                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                              kernel_size=kw, stride=2, padding=padw, bias=use_bias),
                     nn.LeakyReLU(0.2, True)
                 ]
             else:
@@ -529,7 +577,15 @@ class NLayerDiscriminator(nn.Module):
 
         nf_mult_prev = nf_mult
         nf_mult = min(2**n_layers, 8)
-        if gan == 'sngan':
+        if gan == 'sngan' and norm_layer == None:
+            sequence += [
+                SNConv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+                nn.LeakyReLU(0.2, True)
+            ]
+
+            sequence += [SNConv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+        elif gan == 'sngan' and norm_layer != None:
             sequence += [
                 SNConv2d(ndf * nf_mult_prev, ndf * nf_mult,
                           kernel_size=kw, stride=1, padding=padw, bias=use_bias),
@@ -538,6 +594,17 @@ class NLayerDiscriminator(nn.Module):
             ]
 
             sequence += [SNConv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+
+        elif gan != 'sngan' and norm_layer == None:
+            sequence += [
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+                nn.LeakyReLU(0.2, True)
+            ]
+
+            sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+
+
         else:
             sequence += [
                 nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,

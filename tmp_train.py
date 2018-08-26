@@ -62,4 +62,5 @@ if __name__ == '__main__':
         print('End of epoch %d / %d \t Time Taken: %d sec' %
               (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
         model.update_learning_rate()
-    torch.save(model.netG.state_dict(), '/home/chuwenqing/stn_lsgan_gan_latest_netG.pth')
+    torch.save(model.netD.state_dict(), '/home/chuwenqing/warp_stn_l1_latest_netD.pth')
+    torch.save(model.netG.state_dict(), '/home/chuwenqing/warp_stn_l1_latest_netG.pth')

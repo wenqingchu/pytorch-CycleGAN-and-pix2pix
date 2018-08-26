@@ -92,9 +92,9 @@ class StnGanModel(BaseModel):
             # initialize optimizers
             self.optimizers = []
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(),
-                                                lr=opt.lr*0.1, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.02, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(),
-                                                lr=opt.lr*0.01, betas=(opt.beta1, 0.999))
+                                                lr=opt.lr*0.02, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -108,8 +108,8 @@ class StnGanModel(BaseModel):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
         real_B = input['B' if AtoB else 'A']
-        #real_C = input['C']
-        real_C = input['A']
+        real_C = input['C']
+        #real_C = input['A']
 
         input_label = torch.nn.functional.softmax(real_C, dim=1)
         self.real_C = input_label.to(self.device)
@@ -315,10 +315,15 @@ class StnGanModel(BaseModel):
             self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
             self.loss_D.backward()
         elif self.gan == 'wgan' or self.gan == 'wgangp':
-            pred_fake.backward(self.mone)
-            pred_real.backward(self.one)
-            self.loss_D_real = pred_real
-            self.loss_D_fake = - pred_fake
+            tmp_pred_fake = pred_fake.mean()
+            tmp_pred_real = pred_real.mean()
+            #print(tmp_pred_fake.size())
+            #print(tmp_pred_fake.data)
+            #print(self.mone.size())
+            tmp_pred_fake.backward(self.mone)
+            tmp_pred_real.backward(self.one)
+            self.loss_D_real = tmp_pred_real
+            self.loss_D_fake = - tmp_pred_fake
             if self.gan == 'wgangp':
                 # train with gradient penalty
                 gradient_penalty = self.calc_gradient_penalty()
@@ -339,19 +344,17 @@ class StnGanModel(BaseModel):
         recovered_A = self.recovered_A
         #pred_fake = self.netD(fake_AB)
         pred_fake = self.netD(recovered_A)
-        self.loss_G_GAN = self.criterionGAN(pred_fake, True)
-
-        # Second, G(A) = B
         self.loss_G_L1 = self.criterionL1(self.recovered_A, self.real_A)
-
         self.loss_STN_L1 = self.criterionL1(self.predicted_theta, self.theta_i.float().to(self.device))
+        if self.gan == 'vanilla' or self.gan == 'lsgan' or self.gan == 'sngan':
+            self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+            self.loss_G = self.loss_G_L1 * 0.0 + self.loss_STN_L1 * 0.0 + self.loss_G_GAN * 1.0
+            self.loss_G.backward()
+        elif self.gan == 'wgan' or self.gan == 'wgangp':
+            tmp_pred_fake = pred_fake.mean()
+            tmp_pred_fake.backward(self.one)
+            self.loss_G_GAN = tmp_pred_fake
 
-        #self.loss_G = self.loss_G_L1 * self.opt.lambda_L1 + self.loss_STN_L1
-        self.loss_G = self.loss_G_L1 * 0.0 + self.loss_STN_L1 * 0.0 + self.loss_G_GAN * 1.0
-
-        #self.loss_G = self.loss_G_GAN
-
-        self.loss_G.backward()
 
     def optimize_parameters(self):
         self.forward()
