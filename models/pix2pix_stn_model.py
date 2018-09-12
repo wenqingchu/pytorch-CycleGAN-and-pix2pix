@@ -96,6 +96,19 @@ class Pix2PixStnModel(BaseModel):
         self.mone = mone.to(self.device)
         self.gan = opt.gan
 
+    def test(self, opt, input):
+        #print(input['C_paths'])
+        real_A = input['C']
+        input_label = torch.nn.functional.softmax(real_A, dim=1)
+        self.real_A = input_label.to(self.device)
+        if opt.which_model_netG == 'affine_stn':
+            with torch.no_grad():
+                self.recovered_A, self.predicted_theta = self.netG(self.real_A)
+            print(self.predicted_theta)
+            return 0
+        else:
+            raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)
+
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         real_A = input['A' if AtoB else 'B']
@@ -183,6 +196,7 @@ class Pix2PixStnModel(BaseModel):
         elif self.which_model_netG == 'affine_stn':
             self.fake_B, theta_a = self.netG(self.real_A)
             self.fake_C, theta_c = self.netG(self.real_C)
+            print(theta_a)
         else:
             self.fake_B= self.netG(self.real_A)
         # visualize the fake_B

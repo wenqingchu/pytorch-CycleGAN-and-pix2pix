@@ -25,7 +25,10 @@ if __name__ == '__main__':
     for i, data in enumerate(dataset):
         if i >= opt.how_many:
             break
-        if opt.model == 'stn_prediction' and opt.phase == 'test':
+        #if opt.model == 'stn_prediction' and opt.phase == 'test':
+        if i==1:
+            break
+        if opt.model == 'pix2pix_stn' and opt.phase == 'test':
             loss = loss + model.test(opt, data)
         else:
             model.set_input(data)

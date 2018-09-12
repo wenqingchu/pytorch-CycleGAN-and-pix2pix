@@ -41,6 +41,8 @@ class UnalignedDataset(BaseDataset):
             #self.A_paths = A_paths
             self.B_paths = A_paths
             self.A_paths = B_paths
+            if opt.phase == 'test':
+                self.B_paths = B_paths
         elif opt.model == 'stn_prediction':
             A_paths = []
             A_dir = os.path.join(self.root, 'GTA5_prediction/labels')
@@ -115,6 +117,10 @@ class UnalignedDataset(BaseDataset):
         if self.opt.model == 'stn_gan':
             index_C = random.randint(0, self.A_size - 1)
             C_path = self.A_paths[index_C]
+        if self.opt.model == 'pix2pix_stn':
+            self.C_size = len(self.C_paths)
+            index_C = random.randint(0, self.C_size - 1)
+            C_path = self.C_paths[index_C]
 
         # print('(A, B) = (%d, %d)' % (index_A, index_B))
         if self.root == './datasets/semanticlabels':

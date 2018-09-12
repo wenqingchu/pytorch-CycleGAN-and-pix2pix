@@ -10,10 +10,11 @@ class TestOptions(BaseOptions):
         parser.add_argument('--phase', type=str, default='test', help='train, val, test, etc')
         parser.add_argument('--which_epoch', type=str, default='latest', help='which epoch to load? set to latest to use latest cached model')
         parser.add_argument('--how_many', type=int, default=1000, help='how many test images to run')
+        parser.add_argument('--gan', type=str, default='vanilla',help='vanilla, lsgan, wgan, wgangp, sngan GAN')
 
         parser.set_defaults(model='test')
         # To avoid cropping, the loadSize should be the same as fineSize
         parser.set_defaults(loadSize=parser.get_default('fineSize'))
-        
+
         self.isTrain = False
         return parser
