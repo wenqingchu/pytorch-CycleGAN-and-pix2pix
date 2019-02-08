@@ -69,7 +69,7 @@ if __name__ == '__main__':
         if epoch % opt.save_epoch_freq == 0:
             print('saving the model at the end of epoch %d, iters %d' %
                   (epoch, total_steps))
-            save_name = '/home/chuwenqing/GTA5_stn_finetune_netS_epoch_' + str(epoch) + '.pth'
+            save_name = '/home/chuwenqing/GTA5_stn_finetune_netS2_epoch_' + str(epoch) + '.pth'
             torch.save(model.netS.state_dict(), save_name)
             #save_name = '/home/chuwenqing/GTA5_stn_finetune_netG_' + str(epoch) + '.pth'
             #torch.save(model.netG.state_dict(), save_name)

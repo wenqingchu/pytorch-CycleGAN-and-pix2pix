@@ -141,8 +141,8 @@ def define_D(input_nc, ndf, which_model_netD,
 
 def print_grad(grad):
     print('stn_grid_grad')
-    #print(grad.data.cpu())
-    np.save('grid_grad.npy', grad.data.cpu().numpy())
+    print(grad.data.cpu())
+    #np.save('grid_grad.npy', grad.data.cpu().numpy())
 
 class StnGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, which_model_netG, image_width, image_height, ngf=32, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, padding_type='reflect', gan='vanilla'):

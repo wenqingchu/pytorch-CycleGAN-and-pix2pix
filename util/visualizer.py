@@ -5,7 +5,7 @@ import time
 from . import util
 from . import html
 from scipy.misc import imresize
-
+from PIL import Image
 
 # save image to the disk
 def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256):
@@ -45,7 +45,7 @@ class Visualizer():
             import visdom
             self.ncols = opt.display_ncols
             self.vis = visdom.Visdom(server=opt.display_server, port=opt.display_port, raise_exceptions=True)
-            
+
         if self.use_html:
             self.web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
             self.img_dir = os.path.join(self.web_dir, 'images')
@@ -59,7 +59,7 @@ class Visualizer():
     def reset(self):
         self.saved = False
 
-    def throw_visdom_connection_error(self): 
+    def throw_visdom_connection_error(self):
         print('\n\nCould not connect to Visdom server (https://github.com/facebookresearch/visdom) for displaying training progress.\nYou can suppress connection to Visdom using the option --display_id -1. To install visdom, run \n$ pip install visdom\n, and start the server by \n$ python -m visdom.server.\n\n')
         exit(1)
 
@@ -84,6 +84,10 @@ class Visualizer():
                     label_html_row += '<td>%s</td>' % label
                     images.append(image_numpy.transpose([2, 0, 1]))
                     idx += 1
+                    #print(image_numpy.shape)
+                    #im = Image.fromarray(image_numpy)
+                    #im.save(str(idx)+'.png')
+
                     if idx % ncols == 0:
                         label_html += '<tr>%s</tr>' % label_html_row
                         label_html_row = ''
